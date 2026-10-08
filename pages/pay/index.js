@@ -186,6 +186,9 @@ var _api = __webpack_require__(/*! @/pages/api/api.js */ 24);
 // wx.requestPayment 必然失败；故默认关闭真实支付（false），
 // 改为直接调用 /user/orders/{id}/payment/success 把订单推进到「待接单」。
 // 若日后后端补齐支付参数、需要回退到真实微信支付，只需把本常量改为 true，无需改动其它逻辑。
+// ⚠️ 但改为 true 时必须同时给 wx.requestPayment 补 fail 回调并在其中给出用户可见提示，不能只翻开关：
+//    该失败是异步回调，外层 try { … } catch (e) 捕获不到（它只兜同步异常），请求层的统一失败提示也覆盖不到
+//    （那条路径不经过 request()）。否则这条路径会变成「无提示、无善后、无日志」，用户点了没反应。
 var ENABLE_REAL_WX_PAY = false;function ownKeys(object, enumerableOnly) {var keys = Object.keys(object);if (Object.getOwnPropertySymbols) {var symbols = Object.getOwnPropertySymbols(object);if (enumerableOnly) symbols = symbols.filter(function (sym) {return Object.getOwnPropertyDescriptor(object, sym).enumerable;});keys.push.apply(keys, symbols);}return keys;}function _objectSpread(target) {for (var i = 1; i < arguments.length; i++) {var source = arguments[i] != null ? arguments[i] : {};if (i % 2) {ownKeys(Object(source), true).forEach(function (key) {_defineProperty(target, key, source[key]);});} else if (Object.getOwnPropertyDescriptors) {Object.defineProperties(target, Object.getOwnPropertyDescriptors(source));} else {ownKeys(Object(source)).forEach(function (key) {Object.defineProperty(target, key, Object.getOwnPropertyDescriptor(source, key));});}}return target;}function _defineProperty(obj, key, value) {if (key in obj) {Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true });} else {obj[key] = value;}return obj;}var _default =
 {
   data: function data() {
@@ -226,8 +229,8 @@ var ENABLE_REAL_WX_PAY = false;function ownKeys(object, enumerableOnly) {var key
         }).catch(function (err) {
           // 失败可见：原实现没有 catch，取消订单失败（后端返回 code:0 或网络异常）时
           // 失败会被完全静默吞掉，用户看到页面跳转还以为订单已经取消了。
+          // 失败原因由请求层统一提示（展示后端真实 msg），页面不再自行弹出提示。
           console.error('[取消订单] 请求失败', err);
-          uni.showToast({ title: (err && err.msg) || '取消订单失败，请重试', icon: 'none' });
         });
 
       } else {
@@ -278,13 +281,14 @@ var ENABLE_REAL_WX_PAY = false;function ownKeys(object, enumerableOnly) {var key
                     });
                   }
                 }).catch(function (err) {
+                  // 失败原因由请求层统一提示（展示后端真实 msg），页面不再自行弹出提示。
                   console.error('[支付] 支付成功通知失败', err);
-                  wx.showModal({ title: '提示', content: '支付失败，请重试' });
                 });
               }
             } catch (e) {
+              // 这是支付流程内的同步 JS 异常，不是请求失败，请求层的统一提示覆盖不到；
+              // 原实现在这里弹一条硬编码文案，现改为只保留日志，避免用无信息量的文案误导用户。
               console.error('[支付] 支付流程异常', e);
-              wx.showModal({ title: '提示', content: '支付失败，请重试' });
             }
           } else {
             wx.showModal({
@@ -293,8 +297,8 @@ var ENABLE_REAL_WX_PAY = false;function ownKeys(object, enumerableOnly) {var key
             });
           }
         }).catch(function (err) {
+          // 失败原因由请求层统一提示（展示后端真实 msg），页面不再自行弹出提示。
           console.error('[支付] 创建支付单失败', err);
-          wx.showModal({ title: '提示', content: '支付失败，请重试' });
         });
       }
 

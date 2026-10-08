@@ -308,12 +308,10 @@ var _reachBottom = _interopRequireDefault(__webpack_require__(/*! @/components/r
         // 一旦请求失败（网络异常/后端报错）或 code!==1，遮罩永远不会收起，页面直接卡死。
         // 用 finally 保证成功、失败、code!==1 三种情况都会执行到收起遮罩。
         uni.hideLoading();
-      // 失败可见：原实现失败时只有 finally 收起遮罩，没有任何提示，
-      // 用户看到的是「地址列表空白」，会误以为一条地址都没有。这里补一条失败提示。
-      // 注意顺序：catch 必须排在 finally 之后，否则先弹出的 toast 会被随后的 hideLoading 顶掉。
+      // 失败可见：原实现失败时只有 finally 收起遮罩，不会留下任何痕迹，这里保留日志便于定位。
+      // 失败原因由请求层统一提示，页面不再自行弹出提示。
       }).catch(function (err) {
         console.error('[地址列表] 请求失败', err);
-        uni.showToast({ title: (err && err.msg) || '地址列表加载失败', icon: 'none' });
       });
     },
 
@@ -368,7 +366,6 @@ var _reachBottom = _interopRequireDefault(__webpack_require__(/*! @/components/r
         // 既没有任何提示，UI 又在请求前就已先本地选中，用户会误以为设置成功了。
         // 回滚：先行的本地选中态必须恢复成操作前的值，否则 radio 会一直停在「已选中」的假成功状态。
         console.error('[设置默认地址] 请求失败', err);
-        uni.showToast({ title: (err && err.msg) || '设置默认地址失败', icon: 'none' });
         item.isDefault = prevIsDefault;
         _this.isActive = prevIsActive;
       });

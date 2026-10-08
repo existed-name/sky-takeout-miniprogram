@@ -459,9 +459,8 @@ var _api = __webpack_require__(/*! ../api/api.js */ 24);function ownKeys(object,
         }
       }).catch(function (err) {
         // 失败可见：原实现没有 catch，编辑页回显数据失败时表单会整片空白且没有任何提示，
-        // 用户会误以为这条地址的数据丢了。
+        // 用户会误以为这条地址的数据丢了。失败原因由请求层统一提示，页面不再自行弹出提示。
         console.error('[地址详情] 请求失败', err);
-        uni.showToast({ title: (err && err.msg) || '地址详情加载失败', icon: 'none' });
       });
     },
     isClass: function isClass(val) {
@@ -564,11 +563,10 @@ var _api = __webpack_require__(/*! ../api/api.js */ 24);function ownKeys(object,
               url: "/pages/address/address" });
 
           }
-        // 失败可见：原实现没有 catch，编辑失败时页面既不跳转也没有任何提示，
-        // 用户以为没点上会反复点「保存」，故这里把失败原因提示出来。
+        // 失败可见：原实现没有 catch，编辑失败时页面既不跳转也不留痕迹，
+        // 用户以为没点上会反复点「保存」，故这里保留日志；失败原因由请求层统一提示。
         }).catch(function (err) {
           console.error('[编辑地址] 请求失败', err);
-          uni.showToast({ title: (err && err.msg) || '保存地址失败，请重试', icon: 'none' });
         });
       } else {
         delete params.id;
@@ -578,11 +576,10 @@ var _api = __webpack_require__(/*! ../api/api.js */ 24);function ownKeys(object,
               url: "/pages/address/address" });
 
           }
-        // 失败可见：原实现没有 catch，新增失败时页面既不跳转也没有任何提示，
-        // 用户以为没点上会反复点「保存」，造成重复提交，故这里把失败原因提示出来。
+        // 失败可见：原实现没有 catch，新增失败时页面既不跳转也不留痕迹，
+        // 用户以为没点上会反复点「保存」，造成重复提交，故这里保留日志；失败原因由请求层统一提示。
         }).catch(function (err) {
           console.error('[新增地址] 请求失败', err);
-          uni.showToast({ title: (err && err.msg) || '新增地址失败，请重试', icon: 'none' });
         });
       }
     },
@@ -608,10 +605,9 @@ var _api = __webpack_require__(/*! ../api/api.js */ 24);function ownKeys(object,
           _this2.form.districtCode = "110102";
         }
       }).catch(function (err) {
-        // 失败可见：原实现没有 catch，删除失败时页面既不跳转也没有任何提示，
-        // 用户以为没点上会反复点「删除」，故这里把失败原因提示出来。
+        // 失败可见：原实现没有 catch，删除失败时页面既不跳转也不留痕迹，
+        // 用户以为没点上会反复点「删除」，故这里保留日志；失败原因由请求层统一提示。
         console.error('[删除地址] 请求失败', err);
-        uni.showToast({ title: (err && err.msg) || '删除地址失败，请重试', icon: 'none' });
       });
     },
     // 标签的事件

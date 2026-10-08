@@ -4331,9 +4331,8 @@ var _index = __webpack_require__(/*! ../../utils/index.js */ 29);function _inter
                       uni.showToast({ title: success.msg || '登录失败', icon: 'none' });
                     }
                   }).catch(function (err) {
-                    // 失败可见：原实现是空 catch，登录失败后页面会一直白着
+                    // 失败提示由请求层统一弹出（登录失败必走 reject），这里只记录日志
                     console.error('[登录] 请求失败', err);
-                    uni.showToast({ title: '登录失败，请检查网络后重试', icon: 'none' });
                   });
                 },
                 fail: function fail(err) {
@@ -20241,6 +20240,85 @@ exports.getShopStatus = getShopStatus;
 var _env = __webpack_require__(/*! ./env */ 26);function _interopRequireDefault(obj) {return obj && obj.__esModule ? obj : { default: obj };}
 // 401 复位防抖标志：并发请求同时返回 401 时，只弹一次「登录已失效」提示，避免弹窗刷屏
 var hasShownLoginExpired = false;
+// ============ 全局请求失败提示（请求层是唯一收敛点；本模块内只有一处弹出调用）============
+// 总开关：置 false 可一次性关闭请求层的自动提示（console.error 与页面状态善后全部保留）
+var FAIL_TOAST_ENABLED = true;
+// 去重时间窗（毫秒）：与上一次「同一 url + 同一方法 + 同一句文案」间隔小于该值则不再弹，避免并发/连续失败刷屏
+var FAIL_TOAST_WINDOW = 2000;
+// 静默清单：自动触发 / 动作成功后回灌刷新类请求，失败只打日志不弹提示。
+// 必须用「METHOD + 空格 + 绝对路径」精确匹配——/user/shopping-carts 同时有 GET/POST/DELETE 三份同 URL，
+// 用前缀匹配会让「加菜失败」被误判成静默（反之亦然）。
+var FAIL_TOAST_SILENT_REQUESTS = [
+  'GET /user/shopping-carts',   // 首页购物车回灌刷新：加/减/清空成功后自动触发，弹出会与「操作已成功」的观感冲突
+  'GET /user/shop/status'       // 首页 onShow 自动触发的辅助信息（店铺营业状态）
+];
+// 展示层限制：后端 BusinessException 走的是 ex.getMessage()，不是受控常量，长度不可控；
+// 超过该长度就截断展示，避免 toast 只显示半句话反而更困惑
+var FAIL_TOAST_MAX_LEN = 40;
+// 去重状态（模块级，跨所有请求共享）
+var lastFailToastKey = '';
+var lastFailToastAt = 0;
+
+// 提取可展示文案：取值 → 归一空白 → 截断 → 兜底
+function resolveFailMsg(err, fallback) {
+  var msg = '';
+  if (err && typeof err.msg === 'string') {
+    msg = err.msg;
+  } else if (err && err.data && typeof err.data.msg === 'string') {
+    msg = err.data.msg;
+  }
+  // 归一：把换行/连续空白压成一个空格，避免 toast 里出现断行
+  msg = (msg || '').replace(/\s+/g, ' ').trim();
+  // 展示层截断（只影响展示，console.error 里仍是完整内容）
+  if (msg.length > FAIL_TOAST_MAX_LEN) {
+    msg = msg.slice(0, FAIL_TOAST_MAX_LEN - 1) + '…';
+  }
+  return msg || fallback;
+}
+
+// 是否静默：只查静默清单（总开关由 notifyRequestFail 提前判定）
+function isFailToastSilent(url, method) {
+  return FAIL_TOAST_SILENT_REQUESTS.indexOf((method || 'GET') + ' ' + url) > -1;
+}
+
+// 【唯一弹出点】以后要对「支付失败」这类场景做更显著的提示，只改这一个函数
+// （可以按入参 url 分支），不需要任何调用点配合、也不需要改模块 24。
+// 这里用 uni.showModal 而不是 uni.showToast，原因有两条：
+//   1) 时序：本函数在请求层 reject 之前同步执行，而页面同一条 Promise 链上的
+//      .finally(function () { uni.hideLoading(); }) 是之后的微任务，必然晚一步下发到原生层。
+//      小程序里 toast 与 loading 共用同一个原生弹层，后到的 hideLoading 会把先弹的 toast 收掉，
+//      若用 toast，统一失败提示会被静默吞掉；这是时序竞态，靠延迟补弹只能概率性救回。
+//      modal 是独立弹层，不受 hideLoading 影响，故能保证可见。
+//   2) 一致性：401 分支（登录已失效）本来就走 modal，统一后两者行为一致。
+// 后人请勿「优化」回 toast —— 那会重新引入上述提示被静默吞掉的问题。
+function showRequestFailTip(msg, url) {
+  uni.showModal({
+    title: '提示',
+    content: msg,
+    showCancel: false });
+}
+
+// 请求失败统一入口：总开关 → 静默清单 → 取文案 → 去重记账 → 弹出
+function notifyRequestFail(url, method, err, fallback) {
+  try {
+    if (!FAIL_TOAST_ENABLED) return;
+    if (isFailToastSilent(url, method)) return;
+    var msg = resolveFailMsg(err, fallback);
+    // 去重键含方法：同一路径不同方法（如 /user/shopping-carts 的 GET/POST/DELETE）的失败不应互相抑制，
+    // 粒度与 FAIL_TOAST_SILENT_REQUESTS 的「方法 + 路径」保持一致
+    var key = url + '|' + (method || 'GET') + '|' + msg;
+    var now = Date.now();
+    if (key === lastFailToastKey && now - lastFailToastAt < FAIL_TOAST_WINDOW) return;
+    // 记账放在弹出之前：并发失败同时到达时，后到的会被这里挡住
+    lastFailToastKey = key;
+    lastFailToastAt = now;
+    showRequestFailTip(msg, url);
+  } catch (e) {
+    // 提示本身绝不能反过来打断请求流程（reject 必须照常发生）
+    console.error('[请求失败提示] 处理异常', e);
+  }
+}
+
 // 参数： url:请求地址  param：请求参数  method：请求方式 callBack：回调函数
 function request(_ref) {var _ref$url = _ref.url,url = _ref$url === void 0 ? '' : _ref$url,_ref$params = _ref.params,params = _ref$params === void 0 ? {} : _ref$params,_ref$method = _ref.method,method = _ref$method === void 0 ? 'GET' : _ref$method;
   uni.getStorage({
@@ -20268,6 +20346,8 @@ function request(_ref) {var _ref$url = _ref.url,url = _ref$url === void 0 ? '' :
         // 这里必须做「清 storage → 清 Vuex → 只弹一次提示 → 回首页重新登录」的闭环：
         // 因为 token 已经持久化到本地 storage，若只持久化不做复位，JWT 过期（约 8.33 天）后
         // 首页会永远加载不出内容、且用户无法自救（登录弹窗的准入条件是 token 为空串）。
+        // 【刻意不接入全局提示】401 已有「清 storage → 清 Vuex → 弹 modal → 3 秒防抖 → reLaunch 首页」的完整闭环，
+        // 再走统一提示会双弹。此处是唯一豁免点，改动时不得往这段里加 notifyRequestFail。
         if (res && res.statusCode === 401) {
           try {
             uni.removeStorageSync('token');
@@ -20293,6 +20373,16 @@ function request(_ref) {var _ref$url = _ref.url,url = _ref$url === void 0 ? '' :
           return;
         }
         var data = res.data;
+        // 【防御性守卫】后端每个端点都返回 JSON 对象体（成功/失败都是 Result，Spring 默认错误体也是对象），
+        // 故 data 为空的情形在上游不可达（已由请求契约复核确认）。
+        // 这里把该不变量坐实：万一真的出现，直接走失败分支（打印 + 统一提示 + reject），
+        // 而不是让 data.code 抛 TypeError 把 Promise 永久挂在 pending（页面遮罩会永久卡住、且绕过统一提示）。
+        if (!data) {
+          console.error('[请求失败] 响应体为空', _env.baseUrl + url);
+          notifyRequestFail(url, method, null, '请求失败，请稍后重试');
+          reject({ code: 0, msg: '' });
+          return;
+        }
         if (data.code == 200 || data.code === 1) {
           // store.commit('setLodding', false)
           resolve(res.data);
@@ -20300,12 +20390,16 @@ function request(_ref) {var _ref$url = _ref.url,url = _ref$url === void 0 ? '' :
           // 失败可见：后端业务失败一律是 HTTP 200 + code:0，而各页面调用点的 catch 多为空实现，
           // 不在这里打日志的话失败会被完全静默吞掉（表现为「点了没反应」）。故统一打印一条。
           console.error('[请求失败]', _env.baseUrl + url, data);
+          // 全局失败提示：统一由请求层弹出，页面调用点只负责状态复位/回滚
+          notifyRequestFail(url, method, data, '请求失败，请稍后重试');
           // store.commit('setLodding', true)
           reject(res.data);
         }
       },
       fail: function fail(err) {
         var error = { data: { msg: err.data } };
+        // 全局失败提示：网络层失败没有可用 msg（err.data 恒为 undefined），一律用兜底文案
+        notifyRequestFail(url, method, error, '网络异常，请检查网络后重试');
         // store.commit('setLodding', true)
         reject(error);
       } });
@@ -21197,7 +21291,6 @@ var presentFormat = function presentFormat() {
   //秒 getSeconds()：(0 ~ 59)
   var second = date.getSeconds();
   var time = +year + '-' + addZero(month) + '-' + addZero(day) + ' ' + addZero(hour) + ':' + addZero(minute) + ':' + addZero(second);
-  debugger;
   return time;
 };exports.presentFormat = presentFormat;
 function addZero(s) {
@@ -21994,6 +22087,9 @@ var _default = {
           _this4.addressList = res.data;
 
         }
+      }).catch(function (err) {
+        // 失败提示由请求层统一弹出，这里只记录日志（只打窄字段，避免响应体里的收货信息外泄）
+        console.error('[订单页] 获取地址列表失败', err && err.msg);
       });
     },
     // 默认地址查询
@@ -22010,6 +22106,9 @@ var _default = {
           _this5.addressLabel = (0, _index.getLableVal)(res.data.label);
           _this5.tagLabel = res.data.label;
         }
+      }).catch(function (err) {
+        // 失败提示由请求层统一弹出，这里只记录日志（只打窄字段，避免响应体里的收货信息外泄）
+        console.error('[订单页] 获取默认地址失败', err && err.msg);
       });
     },
     // 去地址页面
@@ -22049,8 +22148,6 @@ var _default = {
     },
     // 支付下单
     payOrderHandle: function payOrderHandle() {var _params,_this7 = this;
-      this.isHandlePy = true;
-
       if (!this.address) {
         uni.showToast({
           title: '请选择收货地址',
@@ -22077,6 +22174,10 @@ var _default = {
 
       console.log(this.arrivalTime, params);
 
+      // 【置位】「去支付」按钮在 isHandlePy 为真时没有 bindtap，故置位必须紧邻真正的请求发起之前：
+      // 若在其之前（地址校验、参数构造等）置位，那些位置一旦提前 return 或同步抛错，按钮就会永久锁死。
+      // 复位见下方三处：then 成功分支、else 业务失败分支、catch 请求失败分支。
+      this.isHandlePy = true;
       (0, _api.submitOrderSubmit)(params).then(function (res) {
         if (res.code === 1) {
           _this7.isHandlePy = false;
@@ -22087,11 +22188,17 @@ var _default = {
             url: '/pages/pay/index?orderId=' + res.data.id });
 
         } else {
+          // 失败复位：业务失败同样必须解锁「去支付」
+          _this7.isHandlePy = false;
           uni.showToast({
             title: res.msg || '操作失败',
             icon: 'none' });
 
         }
+      }).catch(function (err) {
+        // 失败复位：下单失败（后端 code:0 或网络异常）必须解锁「去支付」；提示由请求层统一弹出
+        console.error('[订单页] 下单失败', err && err.msg);
+        _this7.isHandlePy = false;
       });
     },
     // 拨打电话
@@ -28490,6 +28597,9 @@ var _default = {
             _this.runTimeBack(_this.orderDetailsData.orderTime);
           }
         }
+      }).catch(function (err) {
+        // 失败提示由请求层统一弹出，这里只记录日志
+        console.error('[订单详情] 获取详情失败', err && err.msg);
       });
     },
 
@@ -28502,6 +28612,9 @@ var _default = {
           _this2.$refs.commonPopup.open(type);
           _this2.orderId = id;
         }
+      }).catch(function (err) {
+        // 失败提示由请求层统一弹出，这里只记录日志
+        console.error('[订单详情] 催单失败', err && err.msg);
       });
     },
     // 取消订单接口
@@ -28514,6 +28627,9 @@ var _default = {
           _this3.$refs.commonPopup.open(type);
           _this3.orderId = obj.id;
         }
+      }).catch(function (err) {
+        // 失败提示由请求层统一弹出，这里只记录日志
+        console.error('[订单详情] 取消订单失败', err && err.msg);
       });
     },
     // 取消订单
@@ -28542,9 +28658,11 @@ var _default = {
                     uni.showToast({ title: (res && res.msg) || '再来一单失败', icon: 'none' });
                   }
                 }).catch(function (err) {
+                  // 失败提示由请求层统一弹出，这里只记录日志
                   console.error('[再来一单] 请求失败', err);
-                  uni.showToast({ title: '再来一单失败', icon: 'none' });
-                });case 3:case "end":return _context.stop();}}}, _callee);}))();
+                });case 3:case "end":return _context.stop();}}}, _callee);}))().catch(function (err) {
+        console.error('[再来一单] 清空购物车失败', err && err.msg);
+      });
     },
     // 处理状态
     statusWord: function statusWord(status) {

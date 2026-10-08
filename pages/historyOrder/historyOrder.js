@@ -368,12 +368,10 @@ var _index = __webpack_require__(/*! @/utils/index.js */ 29);function _interopRe
         // 一旦请求失败（网络异常/后端报错）或 code!==1，遮罩永远不会收起，页面直接卡死。
         // 用 finally 保证成功、失败、code!==1 三种情况都会执行到收起遮罩。
         uni.hideLoading();
-      // 失败可见：原实现失败时只有 finally 收起遮罩，没有任何提示，
-      // 用户看到的是「历史订单列表空白」，会误以为这个状态下没有订单。这里补一条失败提示。
-      // 注意顺序：catch 必须排在 finally 之后，否则先弹出的 toast 会被随后的 hideLoading 顶掉。
+      // 失败可见：原实现失败时只有 finally 收起遮罩，不会留下任何痕迹，这里保留日志便于定位。
+      // 失败原因由请求层统一提示，页面不再自行弹出提示。
       }).catch(function (err) {
         console.error('[历史订单列表] 请求失败', err);
-        uni.showToast({ title: (err && err.msg) || '订单列表加载失败', icon: 'none' });
       });
     },
     // 再来一单
@@ -394,14 +392,14 @@ var _index = __webpack_require__(/*! @/utils/index.js */ 29);function _interopRe
                 // 失败可见：「再来一单」是先清空购物车再复制，复制失败（菜品/套餐停售等）时
                 // 原实现没有 catch，购物车已被清空却没有任何提示，用户会一头雾水。
                 }).catch(function (err) {
+                  // 失败原因由请求层统一提示，页面不再自行弹出提示。
                   console.error('[再来一单] 请求失败', err);
-                  uni.showToast({ title: (err && err.msg) || '再来一单失败', icon: 'none' });
                 });case 5:case "end":return _context.stop();}}}, _callee);}))().catch(function (err) {
       // 失败可见：「再来一单」第一步是 await 清空购物车，原实现这个 await 没有 try/catch，
-      // 失败时会产生未处理的 Promise rejection：既没有任何提示，用户还会以为按钮没反应。
-      // 这里在 async 包装函数返回的 Promise 上补捕获（不影响函数内部原有的成功路径）。
+      // 失败时会产生未处理的 Promise rejection，且用户还会以为按钮没反应。
+      // 这里在 async 包装函数返回的 Promise 上补捕获（不影响函数内部原有的成功路径）；
+      // 失败原因由请求层统一提示，页面不再自行弹出提示。
       console.error('[再来一单] 清空购物车失败', err);
-      uni.showToast({ title: (err && err.msg) || '再来一单失败', icon: 'none' });
     });
     },
     // tab选项卡切换轮播
@@ -463,9 +461,9 @@ var _index = __webpack_require__(/*! @/utils/index.js */ 29);function _interopRe
         }
       // 失败可见：原实现没有 catch，催单失败（后端返回 code:0 或网络异常）时
       // 弹层不会打开、也没有任何提示，用户会以为按钮没反应。
+      // 失败原因由请求层统一提示，页面不再自行弹出提示。
       }).catch(function (err) {
         console.error('[催单] 请求失败', err);
-        uni.showToast({ title: (err && err.msg) || '催单失败，请重试', icon: 'none' });
       });
     },
     // 关闭弹层
