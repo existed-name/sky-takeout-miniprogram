@@ -64,6 +64,9 @@ blob-report/
 !.vscode/tasks.json
 !.vscode/launch.json
 
+# 微信开发者工具自动回写的个人私有配置，会覆盖 project.config.json 中的同名字段，各人机器不同，不应提交
+project.private.config.json
+
 # Temporary files
 *.tmp
 *.temp
