@@ -180,7 +180,13 @@ __webpack_require__.r(__webpack_exports__);
 
 
 var _vuex = __webpack_require__(/*! vuex */ 13);
-var _api = __webpack_require__(/*! @/pages/api/api.js */ 24);function ownKeys(object, enumerableOnly) {var keys = Object.keys(object);if (Object.getOwnPropertySymbols) {var symbols = Object.getOwnPropertySymbols(object);if (enumerableOnly) symbols = symbols.filter(function (sym) {return Object.getOwnPropertyDescriptor(object, sym).enumerable;});keys.push.apply(keys, symbols);}return keys;}function _objectSpread(target) {for (var i = 1; i < arguments.length; i++) {var source = arguments[i] != null ? arguments[i] : {};if (i % 2) {ownKeys(Object(source), true).forEach(function (key) {_defineProperty(target, key, source[key]);});} else if (Object.getOwnPropertyDescriptors) {Object.defineProperties(target, Object.getOwnPropertyDescriptors(source));} else {ownKeys(Object(source)).forEach(function (key) {Object.defineProperty(target, key, Object.getOwnPropertyDescriptor(source, key));});}}return target;}function _defineProperty(obj, key, value) {if (key in obj) {Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true });} else {obj[key] = value;}return obj;}var _default =
+var _api = __webpack_require__(/*! @/pages/api/api.js */ 24);
+// 【支付改造·常量开关】是否走微信真实支付。
+// 后端支付接口 payWithIdAndUserId 目前是空桩，不返回任何可用的支付参数，
+// wx.requestPayment 必然失败；故默认关闭真实支付（false），
+// 改为直接调用 /user/orders/{id}/payment/success 把订单推进到「待接单」。
+// 若日后后端补齐支付参数、需要回退到真实微信支付，只需把本常量改为 true，无需改动其它逻辑。
+var ENABLE_REAL_WX_PAY = false;function ownKeys(object, enumerableOnly) {var keys = Object.keys(object);if (Object.getOwnPropertySymbols) {var symbols = Object.getOwnPropertySymbols(object);if (enumerableOnly) symbols = symbols.filter(function (sym) {return Object.getOwnPropertyDescriptor(object, sym).enumerable;});keys.push.apply(keys, symbols);}return keys;}function _objectSpread(target) {for (var i = 1; i < arguments.length; i++) {var source = arguments[i] != null ? arguments[i] : {};if (i % 2) {ownKeys(Object(source), true).forEach(function (key) {_defineProperty(target, key, source[key]);});} else if (Object.getOwnPropertyDescriptors) {Object.defineProperties(target, Object.getOwnPropertyDescriptors(source));} else {ownKeys(Object(source)).forEach(function (key) {Object.defineProperty(target, key, Object.getOwnPropertyDescriptor(source, key));});}}return target;}function _defineProperty(obj, key, value) {if (key in obj) {Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true });} else {obj[key] = value;}return obj;}var _default =
 {
   data: function data() {
     return {
@@ -210,46 +216,85 @@ var _api = __webpack_require__(/*! @/pages/api/api.js */ 24);function ownKeys(ob
     handleSave: function handleSave() {var _this = this;
       if (this.timeout) {
         (0, _api.cancelOrder)(this.orderId).then(function (res) {
+          // 【跳转竞争修复】原实现把 redirectTo 写在整条 Promise 链之后（不在成功分支里），
+          // 导致请求还在飞时页面就跳走了：失败 toast 刚弹出就被跳转打断，用户根本看不到提示；
+          // 更严重的是订单实际没取消成功，页面却已跳到详情页，状态与后端不一致。
+          // 现在只在「取消成功」的回调里跳转，失败分支保持只提示、不跳转。
+          // 注意：这里必须是普通函数，this 不再指向组件实例，所以用外层闭包的 _this.orderId。
+          uni.redirectTo({
+            url: '/pages/details/index?orderId=' + _this.orderId });
+        }).catch(function (err) {
+          // 失败可见：原实现没有 catch，取消订单失败（后端返回 code:0 或网络异常）时
+          // 失败会被完全静默吞掉，用户看到页面跳转还以为订单已经取消了。
+          console.error('[取消订单] 请求失败', err);
+          uni.showToast({ title: (err && err.msg) || '取消订单失败，请重试', icon: 'none' });
         });
-        uni.redirectTo({
-          url: '/pages/details/index?orderId=' + this.orderId });
 
       } else {
         // 如果支付成功进入成功页
         clearTimeout(this.times);
-        var params = {
-          orderNumber: this.orderDataInfo.orderNumber,
-          payMethod: this.activeRadio === 0 ? 1 : 2 };
-
-        (0, _api.paymentOrder)(params).then(function (res) {
+        // paymentOrder 的签名已统一为「订单 id 裸值」（契约 §1.4 #16），
+        // 原先传 {orderNumber, payMethod} 对象会把 URL 拼成 /user/orders/undefined/payment。
+        (0, _api.paymentOrder)(this.orderId).then(function (res) {
           if (res.code === 1) {
-            wx.requestPayment({
-              nonceStr: res.data.nonceStr,
-              package: res.data.packageStr,
-              paySign: res.data.paySign,
-              timeStamp: res.data.timeStamp,
-              signType: res.data.signType,
-              success:function(res){
-                wx.showModal({
-                  title: '提示',
-                  content: '支付成功',
-                  success:function(){
-                    uni.redirectTo({url: '/pages/success/index?orderId=' + _this.orderId });
+            // 【支付改造】默认跳过 wx.requestPayment（见文件顶部 ENABLE_REAL_WX_PAY 说明）：
+            // 后端支付接口是空桩，拿不到支付参数，真实支付必然失败；
+            // 直接调用支付成功通知接口把订单推进到「待接单」，保证联调链路走得通。
+            // 整段用 try/catch 包住，真实支付开启时若抛错也不会卡死流程。
+            try {
+              if (ENABLE_REAL_WX_PAY) {
+                wx.requestPayment({
+                  nonceStr: res.data.nonceStr,
+                  package: res.data.packageStr,
+                  paySign: res.data.paySign,
+                  timeStamp: res.data.timeStamp,
+                  signType: res.data.signType,
+                  success: function success(res) {
+                    wx.showModal({
+                      title: '提示',
+                      content: '支付成功',
+                      success: function success() {
+                        uni.redirectTo({ url: '/pages/success/index?orderId=' + _this.orderId });
+                      }
+                    });
+                    console.log('支付成功!');
                   }
-                })
-                console.log('支付成功!')
+                });
+              } else {
+                // 直调支付成功通知（POST /user/orders/{id}/payment/success，入参为订单 id 裸值）
+                (0, _api.paymentSuccessOrder)(_this.orderId).then(function (r) {
+                  if (r.code === 1) {
+                    wx.showModal({
+                      title: '提示',
+                      content: '支付成功',
+                      success: function success() {
+                        uni.redirectTo({ url: '/pages/success/index?orderId=' + _this.orderId });
+                      }
+                    });
+                  } else {
+                    wx.showModal({
+                      title: '提示',
+                      content: r.msg
+                    });
+                  }
+                }).catch(function (err) {
+                  console.error('[支付] 支付成功通知失败', err);
+                  wx.showModal({ title: '提示', content: '支付失败，请重试' });
+                });
               }
-            })
-
-
-            //uni.redirectTo({url: '/pages/success/index?orderId=' + _this.orderId });
-
+            } catch (e) {
+              console.error('[支付] 支付流程异常', e);
+              wx.showModal({ title: '提示', content: '支付失败，请重试' });
+            }
           } else {
             wx.showModal({
               title: '提示',
               content: res.msg
-            })
+            });
           }
+        }).catch(function (err) {
+          console.error('[支付] 创建支付单失败', err);
+          wx.showModal({ title: '提示', content: '支付失败，请重试' });
         });
       }
 

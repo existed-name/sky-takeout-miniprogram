@@ -363,6 +363,11 @@ var _index = __webpack_require__(/*! @/utils/index.js */ 29);function _interopRe
           _this2.isEmpty = true;
 
         }
+      }).finally(function () {
+        // 【遮罩卡死修复】原实现只在「成功且 code===1」的分支里调 hideLoading，
+        // 一旦请求失败（网络异常/后端报错）或 code!==1，遮罩永远不会收起，页面直接卡死。
+        // 用 finally 保证成功、失败、code!==1 三种情况都会执行到收起遮罩。
+        uni.hideLoading();
       });
     },
     // 再来一单
@@ -380,6 +385,11 @@ var _index = __webpack_require__(/*! @/utils/index.js */ 29);function _interopRe
                     // 	url: '/pages/index/index?formOrder=' + 'oneMoreOrder'
                     // })
                   }
+                // 失败可见：「再来一单」是先清空购物车再复制，复制失败（菜品/套餐停售等）时
+                // 原实现没有 catch，购物车已被清空却没有任何提示，用户会一头雾水。
+                }).catch(function (err) {
+                  console.error('[再来一单] 请求失败', err);
+                  uni.showToast({ title: (err && err.msg) || '再来一单失败', icon: 'none' });
                 });case 5:case "end":return _context.stop();}}}, _callee);}))();
     },
     // tab选项卡切换轮播
@@ -439,6 +449,11 @@ var _index = __webpack_require__(/*! @/utils/index.js */ 29);function _interopRe
           _this3.$refs.commonPopup.open(type);
           _this3.getList(_this3.status);
         }
+      // 失败可见：原实现没有 catch，催单失败（后端返回 code:0 或网络异常）时
+      // 弹层不会打开、也没有任何提示，用户会以为按钮没反应。
+      }).catch(function (err) {
+        console.error('[催单] 请求失败', err);
+        uni.showToast({ title: (err && err.msg) || '催单失败，请重试', icon: 'none' });
       });
     },
     // 关闭弹层

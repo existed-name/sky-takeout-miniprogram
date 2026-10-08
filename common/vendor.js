@@ -2645,7 +2645,9 @@ var store = new _vuex.default.Store({
     shopPhone: '', //店铺电话
     shopStatus: {}, //店铺状态
     orderData: {},
-    token: '',
+    // token 的唯一真相源是本地 storage（key 为 'token'），Vuex 这里只作缓存；
+    // 这样关闭再打开小程序仍保持登录。注意：请求层在收到 401 时会把 storage 与这里一并清空。
+    token: wx.getStorageSync('token') || '',
     arrivals: '',
     remarkData: '', //备注
     addressData: {} //地址选择
@@ -2687,6 +2689,12 @@ var store = new _vuex.default.Store({
 
     },
     setToken: function setToken(state, provider) {
+      // 同步写入本地 storage：token 唯一真相源为 storage，Vuex 仅作缓存（见 state.token 处的说明）
+      try {
+        wx.setStorageSync('token', provider);
+      } catch (e) {
+        console.error('[token] 写入本地存储失败', e);
+      }
       state.token = provider;
     },
     setArrivalTime: function setArrivalTime(state, provider) {
@@ -4291,41 +4299,47 @@ var _index = __webpack_require__(/*! ../../utils/index.js */ 29);function _inter
           showCancel: false,
           success: function success(res) {
             if (res.confirm) {
-              var jsCode = '';
-              uni.login({
-                provider: 'weixin',
-                success: function success(loginRes) {
-                  if (loginRes.errMsg === 'login:ok') {
-                    console.log('-=-=-=-=loginRes-=-=-=', loginRes);
-                    jsCode = loginRes.code;
-                  }
-                } });
-
-              // 授权
+              // 获取微信用户信息：仅用于页面展示，属「可选」步骤——失败不阻断登录，
+              // 所以这里只记录日志、不弹错误提示。必须放在用户点击的同步上下文中调用（弹窗回调里），
+              // 否则新版基础库会因「非用户手势触发」而拒绝 getUserProfile。
               uni.getUserProfile({
                 desc: '登录',
                 success: function success(userInfo) {
                   _this.setBaseUserInfo(userInfo.userInfo);
-                  var params = {
-                    // phone: jsCode,
-                    // avatar: userInfo.userInfo.avatarUrl,
-                    // name: userInfo.userInfo.nickName,
-                    // sex: userInfo.userInfo.gender,
-                    code: jsCode };
-
-                  console.log(userInfo.userInfo, 11);
-                  (0, _api.userLogin)(params).then(function (success) {
-                    if (success.code === 1) {
-
-                      _this.setToken(success.data.token);
-                      _this.init();
-                    }
-                  }).catch(function (err) {});
                 },
                 fail: function fail(err) {
-
+                  console.error('[登录] 获取用户信息失败（不影响登录）', err);
                 } });
 
+              // 登录：uni.login 是异步的，必须等它回调拿到 code 之后再发登录请求，
+              // 否则会把空的 code 发给后端（原实现里 uni.login 与 getUserProfile 并发、存在该竞态）。
+              uni.login({
+                provider: 'weixin',
+                success: function success(loginRes) {
+                  if (loginRes.errMsg !== 'login:ok' || !loginRes.code) {
+                    console.error('[登录] uni.login 未返回有效 code', loginRes);
+                    uni.showToast({ title: '微信登录失败，请重试', icon: 'none' });
+                    return;
+                  }
+                  (0, _api.userLogin)({ code: loginRes.code }).then(function (success) {
+                    if (success.code === 1) {
+                      _this.setToken(success.data.token);
+                      _this.init();
+                    } else {
+                      // 失败可见：后端业务失败是 code:0，原实现只静默 ignore
+                      console.error('[登录] 后端返回失败', success);
+                      uni.showToast({ title: success.msg || '登录失败', icon: 'none' });
+                    }
+                  }).catch(function (err) {
+                    // 失败可见：原实现是空 catch，登录失败后页面会一直白着
+                    console.error('[登录] 请求失败', err);
+                    uni.showToast({ title: '登录失败，请检查网络后重试', icon: 'none' });
+                  });
+                },
+                fail: function fail(err) {
+                  console.error('[登录] uni.login 调用失败', err);
+                  uni.showToast({ title: '微信登录失败，请重试', icon: 'none' });
+                } });
             }
           } });
 
@@ -4348,6 +4362,9 @@ var _index = __webpack_require__(/*! ../../utils/index.js */ 29);function _inter
                       _this2.getDishListDataes(res.data[_this2.typeIndex || 0]);
                     }
                   }
+                }).catch(function (err) {
+                  // 失败可见：原实现没有 catch，首屏分类拉取失败时页面会空空如也且无任何提示
+                  console.error('[首页] 获取分类失败', err);
                 });
                 // 调用一次购物车集合---初始化
                 _this2.getTableOrderDishListes();case 4:case "end":return _context.stop();}}}, _callee);}))();
@@ -4473,26 +4490,26 @@ var _index = __webpack_require__(/*! ../../utils/index.js */ 29);function _inter
                   }).catch(function (err) {}));case 2:case "end":return _context5.stop();}}}, _callee5);}))();
     },
     // 获取店铺电话
-    getShopPhone: function getShopPhone() {var _this9 = this;return _asyncToGenerator( /*#__PURE__*/_regenerator.default.mark(function _callee6() {return _regenerator.default.wrap(function _callee6$(_context6) {while (1) {switch (_context6.prev = _context6.next) {case 0:_context6.next = 2;return (
-                  (0, _api.getShopPhone)().then(function (res) {
-                    _this9.phoneData = '400-618-4000';
-                    _this9.setShopPhone('400-618-4000');
-                  }).catch(function (err) {}));case 2:case "end":return _context6.stop();}}}, _callee6);}))();
-    },
-    // 重新拼装image
-    getNewImage: function getNewImage(image) {
-      return "".concat(_env.baseUrl, "/common/download?name=").concat(image);
+    // 后端没有 /user/shop/phone 这个接口，原来那次请求必然失败；
+    // 直接使用固定客服电话（与页面原先硬编码的值一致），不再发请求。
+    getShopPhone: function getShopPhone() {
+      this.phoneData = '400-618-4000';
+      this.setShopPhone('400-618-4000');
     },
     // 获取购物车订单列表
     getTableOrderDishListes: function getTableOrderDishListes() {var _this10 = this;return _asyncToGenerator( /*#__PURE__*/_regenerator.default.mark(function _callee7() {return _regenerator.default.wrap(function _callee7$(_context7) {while (1) {switch (_context7.prev = _context7.next) {case 0:_context7.next = 2;return (
 
                   (0, _api.getShoppingCartList)({}).then(function (res) {
                     if (res.code === 1) {
-                      _this10.initdishListMut(res.data);
-                      console.log(res.data);
+                      // 后端购物车列表返回的是对象 { items, totalAmount }，items 才是购物车行数组；
+                      // 原来直接把 res.data（对象）当数组存，导致 computOrderInfo 里 .map 抛 TypeError
+                      // 并被空 catch 吞掉，表现为「购物车数量/金额不动、点了没反应」。
+                      _this10.initdishListMut(res.data.items);
                       _this10.computOrderInfo();
                     }
-                  }).catch(function (err) {}));case 2:case "end":return _context7.stop();}}}, _callee7);}))();
+                  }).catch(function (err) {
+                    console.error('[首页] 获取购物车失败', err);
+                  }));case 2:case "end":return _context7.stop();}}}, _callee7);}))();
     },
     // 去订单页面
     goOrder: function goOrder() {
@@ -4611,34 +4628,30 @@ var _index = __webpack_require__(/*! ../../utils/index.js */ 29);function _inter
                 } else {
                   dishFlavorDatas = null;
                 }
-                params = {
-                  dishFlavor: dishFlavorDatas };
-
-                if (item.type === 1) {
-                  params = _objectSpread(_objectSpread({},
-                  params), {}, {
-                    dishId: item.id });
-
-                } else if (item.type === 2) {
-                  params = {
-                    // ...params,
-                    setmealId: item.id };
-
-                } else if (form === '购物车') {
-                  if (item.dishId) {
-                    params = _objectSpread(_objectSpread({},
-                    params), {}, {
-                      dishId: item.dishId });
-
+                // 购物车减一需要的是「购物车行 id」，不是菜品 id，后端按行 id 减数量。
+                // - 从购物车列表点减号时（form === '购物车'），item 本身就是购物车行，直接用 item.id；
+                // - 从菜品列表 / 菜品详情点减号时（form === '普通'），item 是菜品，需要在当前购物车列表里
+                //   按 dishId（菜品）或 setmealId（套餐）反查购物车行；有规格时再按 dishFlavor 精确匹配。
+                // 反查数据源是 Vuex 里的购物车列表（computed orderListDataes，已在「获取购物车」时被刷新）。
+                var cartList = _this12.orderListDataes;
+                var cartRow = null;
+                if (form === '购物车' && item && item.id) {
+                  cartRow = item;
+                } else if (Array.isArray(cartList)) {
+                  var candidates = cartList.filter(function (n) {
+                    return item.type === 2 ? n.setmealId === item.id : n.dishId === item.id;
+                  });
+                  if (dishFlavorDatas) {
+                    // 规格匹配优先，匹配不到则退化为该商品的第一行
+                    var flavorMatched = candidates.filter(function (n) {return n.dishFlavor === dishFlavorDatas;});
+                    cartRow = flavorMatched[0] || candidates[0] || null;
                   } else {
-                    params = {
-                      // ...params,
-                      setmealId: item.setmealId };
-
+                    cartRow = candidates[0] || null;
                   }
-
-                }_context9.next = 10;return (
-                  (0, _api.newShoppingCartSub)(params).then(function (res) {
+                }
+                // 本地购物车没有该商品可减，直接不发请求（避免再往 URL 里拼 undefined）
+                if (!cartRow) {_context9.next = 10;break;}_context9.next = 10;return (
+                  (0, _api.newShoppingCartSub)(cartRow.id).then(function (res) {
                     if (res.code === 1) {
                       // this.computOrderInfo()
                       // this.setOrderNum()
@@ -4666,14 +4679,16 @@ var _index = __webpack_require__(/*! ../../utils/index.js */ 29);function _inter
       console.log(item, 789);
       this.dishDetailes = item;
       if (item.type === 2) {
-        (0, _api.querySetmealDishById)({
-          id: item.id }).
+        // 统一签名：路径参数传裸值（原来传 { id: item.id }），与 API 层契约保持一致
+        (0, _api.querySetmealDishById)(item.id).
         then(function (res) {
           if (res.code === 1) {
             _this14.openDetailPop = true;
             _this14.dishMealData = res.data;
           }
-        }).catch(function (err) {});
+        }).catch(function (err) {
+          console.error('[菜品详情] 获取套餐菜品失败', err);
+        });
       } else {
         this.openDetailPop = true;
       }
@@ -19948,437 +19963,268 @@ Object.defineProperty(exports, "__esModule", { value: true });exports.default = 
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
-Object.defineProperty(exports, "__esModule", { value: true });exports.repetitionOrder = exports.paymentOrder = exports.reminderOrder = exports.cancelOrder = exports.getOrderDetail = exports.getOrderPage = exports.getShopPhone = exports.getShopStatus = exports.querySetmealDishById = exports.getAddressBookDefault = exports.oneOrderAgain = exports.queryAddressBookById = exports.delAddressBook = exports.editAddressBook = exports.addAddressBook = exports.putAddressBookDefault = exports.queryAddressBookList = exports.submitOrderSubmit = exports.queryOrderUserPage = exports.delShoppingCart = exports.newShoppingCartSub = exports.newAddShoppingCartAdd = exports.editHoppingCart = exports.getShoppingCartList = exports.querySetmeaList = exports.addShoppingCart = exports.commonDownload = exports.dishListByCategoryId = exports.getCategoryList = exports.userLogin = exports.payOrder = exports.clearOrder = exports.delDish = exports.addDish = exports.getDishList = exports.getDishDetail = exports.getList = exports.getMoreNorm = exports.getTableOrderDishList = exports.getTableState = exports.openTable = void 0;var _request = __webpack_require__(/*! ../../utils/request.js */ 25);
+Object.defineProperty(exports, "__esModule", { value: true });exports.repetitionOrder = exports.paymentOrder = exports.paymentSuccessOrder = exports.reminderOrder = exports.cancelOrder = exports.getOrderDetail = exports.getOrderPage = exports.getShopStatus = exports.querySetmealDishById = exports.getAddressBookDefault = exports.queryAddressBookById = exports.delAddressBook = exports.editAddressBook = exports.addAddressBook = exports.putAddressBookDefault = exports.queryAddressBookList = exports.submitOrderSubmit = exports.delShoppingCart = exports.newShoppingCartSub = exports.newAddShoppingCartAdd = exports.getShoppingCartList = exports.querySetmeaList = exports.dishListByCategoryId = exports.getCategoryList = exports.userLogin = void 0;var _request = __webpack_require__(/*! ../../utils/request.js */ 25);
 
 /*
+ * 本模块只保留后端真实存在的用户端接口（共 25 个），并与后端的「路径 / 方法 / 入参」逐一对齐。
  *
+ * 【历史事故说明，务必保留，避免后人再踩】
+ * 本文件是 webpack 编译产物。早期版本把 `exports.xxx = xxx;` 夹杂着写在
+ * `var xxx = function xxx(){}` 的前面；由于 `var` 声明会提升、但赋值不会提升，
+ * 执行到导出语句时函数还是 undefined，运行时必然报 `xxx is not a function`
+ * （首页套餐分类、支付按钮都中过招）。因此本模块统一改为：
+ * 先把全部函数定义完，最后集中导出，彻底消除导出顺序错位。
  *
- * 这里很多接口是后端没有的, 可能是培训班特有的、或者老项目的接口
- *
- *
- *
- */
-// 开桌
-var openTable = function openTable(params) {return (
-    (0, _request.request)({
-      url: "/user/table/open/".concat(params.tableId, "/").concat(params.seatNumber),
-      method: 'GET',
-      params: params }));};
-
-
-// 获取桌台状态
-exports.openTable = openTable;var getTableState = function getTableState(params) {return (
-    (0, _request.request)({
-      url: "/user/table/tableStatus/".concat(params.shopId, "/").concat(params.storeId, "/").concat(params.tableId),
-      method: 'GET',
-      params: params }));};
-
-
-// 获取购物车菜品
-exports.getTableState = getTableState;var getTableOrderDishList = function getTableOrderDishList(params) {return (
-    (0, _request.request)({
-      url: "/user/order/shopCart//".concat(params.tableId),
-      method: 'GET',
-      params: params }));};
-
-// 获取菜品规格
-exports.getTableOrderDishList = getTableOrderDishList;var getMoreNorm = function getMoreNorm(params) {return (
-    (0, _request.request)({
-      url: "/user/dish/flavor/".concat(params.dishId),
-      method: 'GET',
-      params: params }));};
-
-
-// 获取菜品分类列表	
-exports.getMoreNorm = getMoreNorm;var getList = function getList(params) {return (
-    (0, _request.request)({
-      url: "/user/dish/category",
-      method: 'GET',
-      params: params }));};
-
-
-// 获取菜品详情	
-exports.getList = getList;var getDishDetail = function getDishDetail(params) {return (
-    (0, _request.request)({
-      url: "/user/dish/setmealDishList/".concat(params.setmealId),
-      method: 'GET',
-      params: params }));};
-
-
-// 根据分类获取菜品列表
-exports.getDishDetail = getDishDetail;var getDishList = function getDishList(params) {return (
-    (0, _request.request)({
-      url: "/user/dish/dishPageList/".concat(params.categoryId, "/").concat(params.type, "/").concat(params.page, "/").concat(params.pageSize),
-      method: 'GET',
-      params: params }));};
-
-
-// 加菜
-exports.getDishList = getDishList;var addDish = function addDish(params) {return (
-    (0, _request.request)({
-      url: "/user/order/addDish",
-      method: 'POST',
-      params: params }));};
-
-
-// 减菜
-exports.addDish = addDish;var delDish = function delDish(params) {return (
-    (0, _request.request)({
-      url: "/user/order/decreaseDish/".concat(params.tableId, "/").concat(params.dishId),
-      method: 'GET',
-      params: params }));};
-
-
-// 清空购物车
-exports.delDish = delDish;var clearOrder = function clearOrder(params) {return (
-    (0, _request.request)({
-      url: "/user/order/cleanShopCart/".concat(params.tableId),
-      method: 'GET',
-      params: params }));};
-
-
-// 提交订单 
-exports.clearOrder = clearOrder;var payOrder = function payOrder(params) {return (
-    (0, _request.request)({
-      url: "/user/order/pay/".concat(params.tableId, "/").concat(params.jsCode),
-      method: 'GET',
-      params: params }));};
-
-
-/*
- *
- *
- *
- * 从这里开始才是后端接口
- *
- * 并且注意到处都有 `exports.xxx = xxx;` 和其他导出函数混在一起
- *
- *
- *
+ * 同时删除了一批「后端并不存在」的老接口（培训班/老项目遗留），例如：
+ * /user/table/**、/user/order/userPage、/user/order/again、/user/shop/phone、
+ * /user/shoppingCart（单数）、/user/common/download、/user/order/addDish 等；
+ * 这些接口此前也没有任何调用点，属死代码。
  */
 
-/*
-用户端用户接口
-后端端点数: 1 个
-路径前缀: /user/users
- */
-// 用户登录
-exports.payOrder = payOrder;var userLogin = function userLogin(params) {
+/* ==================== 用户端用户接口（/user/users） ==================== */
+// 用户登录（POST /user/users/login，请求体 { code }；code 为 uni.login 返回的临时凭证）
+var userLogin = function userLogin(params) {
   return (0, _request.request)({
     url: '/user/users/login',
     method: 'POST',
     params: params });
-
 };
 
-/*
-用户端分类接口
-后端端点数: 1 个
-路径前缀: /user/categories
- */
-// 菜品和套餐的分类
-exports.userLogin = userLogin;var getCategoryList = function getCategoryList(params) {
+/* ==================== 用户端分类接口（/user/categories） ==================== */
+// 查询菜品与套餐分类列表（GET /user/categories）
+var getCategoryList = function getCategoryList(params) {
   return (0, _request.request)({
     url: '/user/categories',
     method: 'GET',
     params: params });
-
 };
 
-/*
-用户端菜品接口
-后端端点数: 1 个
-路径前缀: /user/dishes
- */
-// 查询菜品管理列表
-exports.getCategoryList = getCategoryList;var dishListByCategoryId = function dishListByCategoryId(params) {
+/* ==================== 用户端菜品接口（/user/dishes） ==================== */
+// 根据分类 id 查询菜品列表（GET /user/dishes?categoryId=）
+var dishListByCategoryId = function dishListByCategoryId(params) {
   return (0, _request.request)({
     url: '/user/dishes',
     method: 'GET',
     params: params });
-
 };
 
-
-/*
-用户端购物车接口
-后端端点数: 4 个
-路径前缀: /user/shopping-carts
- */
-
-// 获取购物车集合
-exports.querySetmeaList = querySetmeaList;var getShoppingCartList = function getShoppingCartList(params) {
+/* ==================== 用户端购物车接口（/user/shopping-carts） ==================== */
+// 查询购物车列表（GET /user/shopping-carts；响应 data 形如 { items, totalAmount }，items 才是数组）
+var getShoppingCartList = function getShoppingCartList(params) {
   return (0, _request.request)({
     url: '/user/shopping-carts',
     method: 'GET',
     params: params });
-
 };
 
-// 购物车新增接口-new
-exports.editHoppingCart = editHoppingCart;var newAddShoppingCartAdd = function newAddShoppingCartAdd(params) {
+// 新增购物车（POST /user/shopping-carts，请求体 { dishId | setmealId, dishFlavor }）
+var newAddShoppingCartAdd = function newAddShoppingCartAdd(params) {
   return (0, _request.request)({
     url: '/user/shopping-carts',
     method: 'POST',
     params: params });
-
 };
 
-
-// 购物车减菜接口-new 
-exports.newAddShoppingCartAdd = newAddShoppingCartAdd;var newShoppingCartSub = function newShoppingCartSub(params) {
+// 购物车数量减一（PUT /user/shopping-carts/{购物车行 id}/decrement）
+// 入参是「购物车行 id」的裸值（不是菜品 id，也不是对象）；后端只接收路径参数，故不再发送请求体。
+var newShoppingCartSub = function newShoppingCartSub(id) {
   return (0, _request.request)({
-    url: '/user/shopping-carts/'.concat(params.id).concat( '/decrement' ),
-    method: 'POST',
-    params: params });
-
+    url: '/user/shopping-carts/'.concat(id).concat('/decrement'),
+    method: 'PUT',
+    params: {} });
 };
 
-
-// 清除购物车
-exports.newShoppingCartSub = newShoppingCartSub;var delShoppingCart = function delShoppingCart(params) {
+// 清空购物车（DELETE /user/shopping-carts）
+var delShoppingCart = function delShoppingCart(params) {
   return (0, _request.request)({
     url: '/user/shopping-carts',
     method: 'DELETE',
     params: params });
-
 };
 
-
-/*
-用户端订单接口
-后端端点数: 8 个
-路径前缀: /user/orders
-前端少了一个支付成功的回调通知, 支付( 其实就点一下确认支付就行 )后调后端支付成功接口, 然后显示支付成功
- */
-
-
-// 用户下单
-exports.queryOrderUserPage = queryOrderUserPage;var submitOrderSubmit = function submitOrderSubmit(params) {
+/* ==================== 用户端订单接口（/user/orders） ==================== */
+// 用户下单（POST /user/orders，请求体为 OrdersSubmitDTO）
+var submitOrderSubmit = function submitOrderSubmit(params) {
   return (0, _request.request)({
     url: '/user/orders',
     method: 'POST',
     params: params });
-
 };
 
-// 再来一单
-exports.paymentOrder = paymentOrder;var repetitionOrder = function repetitionOrder(params) {return (
-    (0, _request.request)({
-      url: "/user/orders/".concat(params.id).concat( '/repetition' ).concat(params),
-      method: 'POST',
-      params: params }));};exports.repetitionOrder = repetitionOrder;
-
-// 历史订单
-exports.getShopPhone = getShopPhone;var getOrderPage = function getOrderPage(params) {
+// 历史订单分页（GET /user/orders/history?page=&pageSize=&status=）
+var getOrderPage = function getOrderPage(params) {
   return (0, _request.request)({
     url: '/user/orders/history',
     method: 'GET',
     params: params });
-
 };
-// 订单详情
-exports.getOrderPage = getOrderPage;var getOrderDetail = function getOrderDetail(params) {return (
-    (0, _request.request)({
-      url: "/user/orders/".concat(params),
-      method: 'GET' }));};
 
-// 取消订单
-exports.getOrderDetail = getOrderDetail;var cancelOrder = function cancelOrder(params) {return (
-    (0, _request.request)({
-      url: "/user/order/".concat(params.id).concat( '/cancelation' ),
-      method: 'PUT' }));};
+// 订单详情（GET /user/orders/{id}，入参为订单 id 裸值）
+var getOrderDetail = function getOrderDetail(id) {
+  return (0, _request.request)({
+    url: '/user/orders/'.concat(id),
+    method: 'GET' });
+};
 
-// 催单
-exports.cancelOrder = cancelOrder;var reminderOrder = function reminderOrder(params) {return (
-    (0, _request.request)({
-      url: "/user/orders/".concat(params.id).concat( '/urge-acceptance' ),
-      method: 'POST' }));};
+// 取消订单（PUT /user/orders/{id}/cancellation）
+// 修正两处历史错误：① 路径要用复数 orders；② 拼写是双 L 的 cancellation。
+// 后端该方法带 @RequestBody OrderCancelDTO，缺请求体会报「请求体不能为空」，故必须带上 { cancelReason }。
+var cancelOrder = function cancelOrder(id) {
+  return (0, _request.request)({
+    url: '/user/orders/'.concat(id).concat('/cancellation'),
+    method: 'PUT',
+    params: { cancelReason: '' } });
+};
 
-// 订单支付
-exports.reminderOrder = reminderOrder;var paymentOrder = function paymentOrder(params) {return (
-    (0, _request.request)({
-      url: "/user/orders/".concat( params.id ).concat( "/payment" ),
-      method: 'POST',
-      params: params }));};
+// 催单（POST /user/orders/{id}/urge-acceptance，入参为订单 id 裸值）
+var reminderOrder = function reminderOrder(id) {
+  return (0, _request.request)({
+    url: '/user/orders/'.concat(id).concat('/urge-acceptance'),
+    method: 'POST' });
+};
 
-/*
-用户端地址簿接口
-后端端点数: 7 个
-路径前缀: /user/address-books
- */
+// 订单支付（POST /user/orders/{id}/payment，入参为订单 id 裸值）
+var paymentOrder = function paymentOrder(id) {
+  return (0, _request.request)({
+    url: '/user/orders/'.concat(id).concat('/payment'),
+    method: 'POST',
+    params: {} });
+};
 
-// 查询地址列表
-exports.submitOrderSubmit = submitOrderSubmit;var queryAddressBookList = function queryAddressBookList(params) {
+// 支付成功通知（POST /user/orders/{id}/payment/success，入参为订单 id 裸值）
+// 说明：后端 payWithIdAndUserId 目前是空桩（不返回任何可用的支付参数），
+// wx.requestPayment 必然拿不到参数而失败，因此前端改为直接调用本接口把订单推进到「待接单」。
+var paymentSuccessOrder = function paymentSuccessOrder(id) {
+  return (0, _request.request)({
+    url: '/user/orders/'.concat(id).concat('/payment/success'),
+    method: 'POST',
+    params: {} });
+};
+
+// 再来一单（POST /user/orders/{id}/repetition，入参为订单 id 裸值）
+// 历史实现里误加了 .concat(params)，会把入参对象拼到 URL 后面（拼出 .../repetition[object Object]），已删除。
+var repetitionOrder = function repetitionOrder(id) {
+  return (0, _request.request)({
+    url: '/user/orders/'.concat(id).concat('/repetition'),
+    method: 'POST',
+    params: {} });
+};
+
+/* ==================== 用户端地址簿接口（/user/address-books） ==================== */
+// 查询地址列表（GET /user/address-books）
+var queryAddressBookList = function queryAddressBookList(params) {
   return (0, _request.request)({
     url: '/user/address-books',
     method: 'GET',
     params: params });
-
 };
 
-// 设置默认地址
-exports.queryAddressBookList = queryAddressBookList;var putAddressBookDefault = function putAddressBookDefault(params) {
+// 设置默认地址（PUT /user/address-books/{id}/default，入参为地址 id 裸值）
+var putAddressBookDefault = function putAddressBookDefault(id) {
   return (0, _request.request)({
-    url: '/user/address-books/'.concat( params.id ).concat( '/default' ),
+    url: '/user/address-books/'.concat(id).concat('/default'),
     method: 'PUT',
-    params: params });
-
+    params: {} });
 };
 
-
-// 新增地址接口
-exports.putAddressBookDefault = putAddressBookDefault;var addAddressBook = function addAddressBook(params) {
+// 新增地址（POST /user/address-books，请求体为 AddressBookDTO）
+var addAddressBook = function addAddressBook(params) {
   return (0, _request.request)({
     url: '/user/address-books',
     method: 'POST',
     params: params });
-
 };
 
-// 修改地址接口
-exports.addAddressBook = addAddressBook;var editAddressBook = function editAddressBook(params) {
+// 修改地址（PUT /user/address-books/{id}）
+// 契约：入参为单个对象（AddressBookDTO，内含 id）。路径取对象的 id；
+// 请求体需要把 id 剔除后再发送（id 只用于拼路径）。
+var editAddressBook = function editAddressBook(params) {
+  var body = {};
+  for (var key in params) {
+    if (key !== 'id') {
+      body[key] = params[key];
+    }
+  }
   return (0, _request.request)({
-    url: '/user/address-books/'.concat( params.id ),
+    url: '/user/address-books/'.concat(params.id),
     method: 'PUT',
-    params: params });
-
+    params: body });
 };
 
-// 删除地址
-exports.editAddressBook = editAddressBook;var delAddressBook = function delAddressBook(id) {
+// 删除地址（DELETE /user/address-books/{id}，入参为地址 id 裸值）
+var delAddressBook = function delAddressBook(id) {
   return (0, _request.request)({
-    url: "/user/address-books/".concat(id),
-    method: 'DELETE',
-    params: { id: id } });
-
+    url: '/user/address-books/'.concat(id),
+    method: 'DELETE' });
 };
 
-// 通过id查询地址
-exports.delAddressBook = delAddressBook;var queryAddressBookById = function queryAddressBookById(params) {
+// 根据 id 查询地址（GET /user/address-books/{id}，入参为地址 id 裸值）
+var queryAddressBookById = function queryAddressBookById(id) {
   return (0, _request.request)({
-    url: "/user/address-books/".concat(params.id),
-    method: 'GET',
-    params: params });
-
+    url: '/user/address-books/'.concat(id),
+    method: 'GET' });
 };
 
-
-/*
-再来一单,
-这个应该是老项目遗留的代码, 删除过后编译会报错
-oneOrderAgain is not defined>
-ReferenceError: oneOrderAgain is not defined
-把它补上后才通过的编译
-这个小程序端一大堆旧代码、旧引用, 可能都需要清理一下
- */
-exports.queryAddressBookById = queryAddressBookById;var oneOrderAgain = function oneOrderAgain(params) {
-  return (0, _request.request)({
-    url: '/user/order/again',
-    method: 'POST',
-    params: params });
-
-};
-
-// 查询默认地址
-exports.oneOrderAgain = oneOrderAgain;var getAddressBookDefault = function getAddressBookDefault() {
+// 查询默认地址（GET /user/address-books/default）
+var getAddressBookDefault = function getAddressBookDefault() {
   return (0, _request.request)({
     url: '/user/address-books/default',
     method: 'GET' });
-
 };
 
-
-/*
-用户端套餐接口
-后端端点数: 2 个
-路径前缀: /user/setmeals
- */
-// 此接口为首页查询套餐详情展示的接口
-exports.getAddressBookDefault = getAddressBookDefault;var querySetmealDishById = function querySetmealDishById(params) {
+/* ==================== 用户端套餐接口（/user/setmeals） ==================== */
+// 查询套餐内菜品（GET /user/setmeals/{id}/dishes，入参为套餐 id 裸值）
+var querySetmealDishById = function querySetmealDishById(id) {
   return (0, _request.request)({
-    url: "/user/setmeals/".concat(params.id).concat( '/dishes' ),
+    url: '/user/setmeals/'.concat(id).concat('/dishes'),
     method: 'GET' });
-
 };
 
-// 根据商品分类查询所有套餐
-exports.addShoppingCart = addShoppingCart;var querySetmeaList = function querySetmeaList(params) {
+// 根据套餐分类 id 查询套餐列表（GET /user/setmeals?categoryId=）
+// 注意：函数名沿用了历史拼写 querySetmeaList（Setmea 少一个 l），此处刻意不改名，
+// 避免牵连导出清单与调用点、再次引发搬运事故。
+var querySetmeaList = function querySetmeaList(params) {
   return (0, _request.request)({
     url: '/user/setmeals',
     method: 'GET',
     params: params });
-
 };
 
-/*
-用户端店铺接口
-后端端点数: 1 个
-路径前缀: /user/shop
- */
-// v2.0添加接口
-// 获取首页店铺信息
-exports.querySetmealDishById = querySetmealDishById;var getShopStatus = function getShopStatus(params) {
+/* ==================== 用户端店铺接口（/user/shop） ==================== */
+// 查询店铺营业状态（GET /user/shop/status）
+var getShopStatus = function getShopStatus(params) {
   return (0, _request.request)({
-    url: "/user/shop/status",
+    url: '/user/shop/status',
     method: 'GET' });
-
 };
 
-
-
-/*
- *
- *
- * 其他后端没有的接口
- *
- *
- */
-
-// 文件下载---预览, 后端没有这个接口
-exports.dishListByCategoryId = dishListByCategoryId;var commonDownload = function commonDownload(params) {
-  return (0, _request.request)({
-    url: '/user/common/download',
-    method: 'GET',
-    params: params });
-
-};
-
-// 最近订单和历史订单, 后端没有这个接口
-exports.delShoppingCart = delShoppingCart;var queryOrderUserPage = function queryOrderUserPage(params) {
-  return (0, _request.request)({
-    url: '/user/order/userPage',
-    method: 'GET',
-    params: params });
-
-};
-
-// 购物车----加菜功能实现
-exports.commonDownload = commonDownload;var addShoppingCart = function addShoppingCart(params) {
-  return (0, _request.request)({
-    url: '/user/shoppingCart',
-    method: 'POST',
-    params: params });
-
-};
-
-
-// 修改购物车数量功能
-exports.getShoppingCartList = getShoppingCartList;var editHoppingCart = function editHoppingCart(params) {
-  return (0, _request.request)({
-    url: '/user/shoppingCart',
-    method: 'PUT',
-    params: params });
-
-};
-
-// 获取店铺电话, 后端没有这个接口
-exports.getShopStatus = getShopStatus;var getShopPhone = function getShopPhone(params) {
-  return (0, _request.request)({
-    url: "/user/shop/phone",
-    method: 'GET' });
-
-};
+/* ==================== 集中导出 ==================== */
+/* 全部导出统一放在所有函数定义之后，确保导出时拿到的都是函数本体（原因见本模块顶部注释） */
+exports.userLogin = userLogin;
+exports.getCategoryList = getCategoryList;
+exports.dishListByCategoryId = dishListByCategoryId;
+exports.getShoppingCartList = getShoppingCartList;
+exports.newAddShoppingCartAdd = newAddShoppingCartAdd;
+exports.newShoppingCartSub = newShoppingCartSub;
+exports.delShoppingCart = delShoppingCart;
+exports.submitOrderSubmit = submitOrderSubmit;
+exports.getOrderPage = getOrderPage;
+exports.getOrderDetail = getOrderDetail;
+exports.cancelOrder = cancelOrder;
+exports.reminderOrder = reminderOrder;
+exports.paymentOrder = paymentOrder;
+exports.paymentSuccessOrder = paymentSuccessOrder;
+exports.repetitionOrder = repetitionOrder;
+exports.queryAddressBookList = queryAddressBookList;
+exports.putAddressBookDefault = putAddressBookDefault;
+exports.addAddressBook = addAddressBook;
+exports.editAddressBook = editAddressBook;
+exports.delAddressBook = delAddressBook;
+exports.queryAddressBookById = queryAddressBookById;
+exports.getAddressBookDefault = getAddressBookDefault;
+exports.querySetmealDishById = querySetmealDishById;
+exports.querySetmeaList = querySetmeaList;
+exports.getShopStatus = getShopStatus;
 
 
 /***/ }),
@@ -20393,6 +20239,8 @@ exports.getShopStatus = getShopStatus;var getShopPhone = function getShopPhone(p
 "use strict";
 /* WEBPACK VAR INJECTION */(function(uni) {Object.defineProperty(exports, "__esModule", { value: true });exports.request = request;var _store = _interopRequireDefault(__webpack_require__(/*! ./../store */ 12));
 var _env = __webpack_require__(/*! ./env */ 26);function _interopRequireDefault(obj) {return obj && obj.__esModule ? obj : { default: obj };}
+// 401 复位防抖标志：并发请求同时返回 401 时，只弹一次「登录已失效」提示，避免弹窗刷屏
+var hasShownLoginExpired = false;
 // 参数： url:请求地址  param：请求参数  method：请求方式 callBack：回调函数
 function request(_ref) {var _ref$url = _ref.url,url = _ref$url === void 0 ? '' : _ref$url,_ref$params = _ref.params,params = _ref$params === void 0 ? {} : _ref$params,_ref$method = _ref.method,method = _ref$method === void 0 ? 'GET' : _ref$method;
   uni.getStorage({
@@ -20415,12 +20263,43 @@ function request(_ref) {var _ref$url = _ref.url,url = _ref$url === void 0 ? '' :
       data: params,
       header: header,
       method: method,
-      success: function success(res) {var
-        data = res.data;
+      success: function success(res) {
+        // 【401 复位闭环】后端登录态失效时返回 HTTP 401（响应体是 {code:0,msg:'您还没有登录哦~'}）。
+        // 这里必须做「清 storage → 清 Vuex → 只弹一次提示 → 回首页重新登录」的闭环：
+        // 因为 token 已经持久化到本地 storage，若只持久化不做复位，JWT 过期（约 8.33 天）后
+        // 首页会永远加载不出内容、且用户无法自救（登录弹窗的准入条件是 token 为空串）。
+        if (res && res.statusCode === 401) {
+          try {
+            uni.removeStorageSync('token');
+            _store.default.commit('setToken', '');
+          } catch (e) {
+            console.error('[401] 清理本地登录态失败', e);
+          }
+          console.error('[401] 登录已失效，请重新登录', res.data);
+          if (!hasShownLoginExpired) {
+            hasShownLoginExpired = true;
+            uni.showModal({
+              title: '登录已失效',
+              content: '请重新登录',
+              showCancel: false,
+              complete: function complete() {
+                // 3 秒后解除防抖，保证以后再次过期时还能提示
+                setTimeout(function () { hasShownLoginExpired = false; }, 3000);
+                // 回首页：此时 token 已清空，onShow/getData 会重新触发授权登录
+                uni.reLaunch({ url: '/pages/index/index' });
+              } });
+          }
+          reject(res.data);
+          return;
+        }
+        var data = res.data;
         if (data.code == 200 || data.code === 1) {
           // store.commit('setLodding', false)
           resolve(res.data);
         } else {
+          // 失败可见：后端业务失败一律是 HTTP 200 + code:0，而各页面调用点的 catch 多为空实现，
+          // 不在这里打日志的话失败会被完全静默吞掉（表现为「点了没反应」）。故统一打印一条。
+          console.error('[请求失败]', _env.baseUrl + url, data);
           // store.commit('setLodding', true)
           reject(res.data);
         }
@@ -22146,10 +22025,6 @@ var _default = {
 
       }
 
-    },
-    // // 重新拼装image
-    getNewImage: function getNewImage(image) {
-      return "".concat(_env.baseUrl, "/common/download?name=").concat(image);
     },
     // 订单里和总订单价格计算
     computOrderInfo: function computOrderInfo() {var _this6 = this;
@@ -28659,7 +28534,15 @@ var _default = {
                     uni.redirectTo({
                       url: '/pages/index/index' });
 
+                  } else {
+                    // 失败可见：「再来一单」是先清空购物车再复制，若复制失败（菜品/套餐停售等），
+                    // 购物车已被清空却没有提示，用户会一头雾水。这里把后端返回的原因显示出来。
+                    console.error('[再来一单] 失败', res);
+                    uni.showToast({ title: (res && res.msg) || '再来一单失败', icon: 'none' });
                   }
+                }).catch(function (err) {
+                  console.error('[再来一单] 请求失败', err);
+                  uni.showToast({ title: '再来一单失败', icon: 'none' });
                 });case 3:case "end":return _context.stop();}}}, _callee);}))();
     },
     // 处理状态
@@ -28721,10 +28604,6 @@ var _default = {
       }
     },
 
-    // 重新拼装image
-    getNewImage: function getNewImage(image) {
-      return "".concat(_env.baseUrl, "/common/download?name=").concat(image);
-    },
     // 返回上一级
     goBack: function goBack() {
       uni.redirectTo({

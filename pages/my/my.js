@@ -394,6 +394,11 @@ var _index = __webpack_require__(/*! @/utils/index.js */ 29);function _interopRe
                     // 	url: '/pages/index/index?formOrder=' + 'oneMoreOrder'
                     // })
                   }
+                // 失败可见：「再来一单」是先清空购物车再复制，复制失败（菜品/套餐停售等）时
+                // 原实现没有 catch，购物车已被清空却没有任何提示，用户会一头雾水。
+                }).catch(function (err) {
+                  console.error('[再来一单] 请求失败', err);
+                  uni.showToast({ title: (err && err.msg) || '再来一单失败', icon: 'none' });
                 });case 5:case "end":return _context.stop();}}}, _callee);}))();
     },
     quitClick: function quitClick() {

@@ -303,6 +303,11 @@ var _reachBottom = _interopRequireDefault(__webpack_require__(/*! @/components/r
             }
           });
         }
+      }).finally(function () {
+        // 【遮罩卡死修复】原实现只在「成功且 code===1」的分支里调 hideLoading，
+        // 一旦请求失败（网络异常/后端报错）或 code!==1，遮罩永远不会收起，页面直接卡死。
+        // 用 finally 保证成功、失败、code!==1 三种情况都会执行到收起遮罩。
+        uni.hideLoading();
       });
     },
 
@@ -337,7 +342,9 @@ var _reachBottom = _interopRequireDefault(__webpack_require__(/*! @/components/r
       // // 提供默认接口
       item.isDefault = 1;
       this.isActive = index;
-      (0, _api.putAddressBookDefault)({ id: item.id }).then(function (res) {
+      // putAddressBookDefault 的签名已统一为「地址 id 裸值」（契约 §1.4 #20），
+      // 传对象会读不到 id 并把 URL 拼成 /user/address-books/undefined/default，故这里必须传裸值。
+      (0, _api.putAddressBookDefault)(item.id).then(function (res) {
         if (res.code === 1) {
           uni.showToast({
             title: '默认地址设置成功',
