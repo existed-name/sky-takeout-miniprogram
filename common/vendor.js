@@ -28445,7 +28445,8 @@ var _default = {
       return this.orderListData();
     },
     phone: function phone() {
-      return this.shopPhone();
+      // shopPhone 恒为空串（唯一赋值点被注释），为空时兜底显示固定客服电话，取值与首页硬编码保持一致
+      return this.shopPhone() || '400-618-4000';
     },
     // // 处理订单详情列表
     orderDataes: function orderDataes() {
@@ -28628,6 +28629,11 @@ var _default = {
     closePopup: function closePopup(type) {
       this.$refs.phone.close(type);
     },
+    // uni-popup 打开/关闭时会 $emit('change')，模板绑定了本方法，此处仅作占位；
+    // 真正的清理留到转原生轮次，写法与首页(vendor.js:4815)、提交订单页(vendor.js:22136)保持一致
+    change: function change(e) {
+      console.log('当前模式：' + e.type + ',状态：' + e.show);
+    },
     // closePopupInfo
     closePopupInfo: function closePopupInfo(type) {
       this.$refs.commonPopup.close(type);
@@ -28647,7 +28653,8 @@ var _default = {
 
     },
     call: function call() {
-      (0, _index.call)(this.shopPhone());
+      // 拨打弹层里显示的号码，保证「显示什么就拨什么」（phone 计算属性已做空值兜底）
+      (0, _index.call)(this.phone);
     } }) };exports.default = _default;
 /* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 1)["default"]))
 
