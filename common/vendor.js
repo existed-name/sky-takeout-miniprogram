@@ -20051,6 +20051,8 @@ exports.clearOrder = clearOrder;var payOrder = function payOrder(params) {return
  *
  * 从这里开始才是后端接口
  *
+ * 并且注意到处都有 `exports.xxx = xxx;` 和其他导出函数混在一起
+ *
  *
  *
  */
@@ -20261,6 +20263,22 @@ exports.delAddressBook = delAddressBook;var queryAddressBookById = function quer
 
 };
 
+
+/*
+再来一单,
+这个应该是老项目遗留的代码, 删除过后编译会报错
+oneOrderAgain is not defined>
+ReferenceError: oneOrderAgain is not defined
+把它补上后才通过的编译
+这个小程序端一大堆旧代码、旧引用, 可能都需要清理一下
+ */
+exports.queryAddressBookById = queryAddressBookById;var oneOrderAgain = function oneOrderAgain(params) {
+  return (0, _request.request)({
+    url: '/user/order/again',
+    method: 'POST',
+    params: params });
+
+};
 
 // 查询默认地址
 exports.oneOrderAgain = oneOrderAgain;var getAddressBookDefault = function getAddressBookDefault() {
