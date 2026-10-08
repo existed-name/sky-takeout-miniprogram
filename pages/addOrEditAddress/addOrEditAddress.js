@@ -334,13 +334,14 @@ var _api = __webpack_require__(/*! ../api/api.js */ 24);function ownKeys(object,
       valueMan: true,
       valueWoman: true,
       showClass: false,
+      // 【性别取值域对齐】后端 Gender 枚举只接受 1=男 / 2=女（旧前端用的 0=男 / 1=女 已废弃）。
       items: [
       {
-        value: "0",
+        value: "1",
         name: "先生" },
 
       {
-        value: "1",
+        value: "2",
         name: "女士" }],
 
 
@@ -366,7 +367,8 @@ var _api = __webpack_require__(/*! ../api/api.js */ 24);function ownKeys(object,
         // address: '',
         type: 1,
         // radio: 0,
-        sex: "0",
+        // 性别默认「先生」，取值 1=男 / 2=女，与后端 Gender 枚举一致
+        sex: "1",
         provinceCode: "11",
         provinceName: "",
         cityCode: "1101",
@@ -434,7 +436,10 @@ var _api = __webpack_require__(/*! ../api/api.js */ 24);function ownKeys(object,
             districtCode: res.data.districtCode,
             phone: res.data.phone,
             name: res.data.consignee,
-            sex: res.data.sex,
+            // 【性别取值域对齐】后端回传的是 "1"(男) / "2"(女)。
+            // 存量脏数据兼容：旧前端默认值及「先生」写库的是 "0"（旧域 0=男 1=女），
+            // 这里把 "0"（以及空值）按「男」("1") 回显，避免单选按钮两个都不选中。
+            sex: res.data.sex == "0" || !res.data.sex ? "1" : String(res.data.sex),
             type: Number(res.data.label),
             detail: res.data.detail,
             id: res.data.id };
@@ -452,6 +457,11 @@ var _api = __webpack_require__(/*! ../api/api.js */ 24);function ownKeys(object,
             res.data.districtName;
           }
         }
+      }).catch(function (err) {
+        // 失败可见：原实现没有 catch，编辑页回显数据失败时表单会整片空白且没有任何提示，
+        // 用户会误以为这条地址的数据丢了。
+        console.error('[地址详情] 请求失败', err);
+        uni.showToast({ title: (err && err.msg) || '地址详情加载失败', icon: 'none' });
       });
     },
     isClass: function isClass(val) {
@@ -554,6 +564,11 @@ var _api = __webpack_require__(/*! ../api/api.js */ 24);function ownKeys(object,
               url: "/pages/address/address" });
 
           }
+        // 失败可见：原实现没有 catch，编辑失败时页面既不跳转也没有任何提示，
+        // 用户以为没点上会反复点「保存」，故这里把失败原因提示出来。
+        }).catch(function (err) {
+          console.error('[编辑地址] 请求失败', err);
+          uni.showToast({ title: (err && err.msg) || '保存地址失败，请重试', icon: 'none' });
         });
       } else {
         delete params.id;
@@ -563,6 +578,11 @@ var _api = __webpack_require__(/*! ../api/api.js */ 24);function ownKeys(object,
               url: "/pages/address/address" });
 
           }
+        // 失败可见：原实现没有 catch，新增失败时页面既不跳转也没有任何提示，
+        // 用户以为没点上会反复点「保存」，造成重复提交，故这里把失败原因提示出来。
+        }).catch(function (err) {
+          console.error('[新增地址] 请求失败', err);
+          uni.showToast({ title: (err && err.msg) || '新增地址失败，请重试', icon: 'none' });
         });
       }
     },
@@ -587,6 +607,11 @@ var _api = __webpack_require__(/*! ../api/api.js */ 24);function ownKeys(object,
           _this2.form.cityCode = "1101";
           _this2.form.districtCode = "110102";
         }
+      }).catch(function (err) {
+        // 失败可见：原实现没有 catch，删除失败时页面既不跳转也没有任何提示，
+        // 用户以为没点上会反复点「删除」，故这里把失败原因提示出来。
+        console.error('[删除地址] 请求失败', err);
+        uni.showToast({ title: (err && err.msg) || '删除地址失败，请重试', icon: 'none' });
       });
     },
     // 标签的事件

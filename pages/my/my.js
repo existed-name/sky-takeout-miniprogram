@@ -364,6 +364,13 @@ var _index = __webpack_require__(/*! @/utils/index.js */ 29);function _interopRe
           _this2.loadingText = '';
           _this2.loading = false;
         }
+      }).catch(function (err) {
+        // 失败可见：原实现没有 catch，我的页订单列表拉取失败时列表空白且没有任何提示，
+        // 用户会以为「最近订单」本来就是空的；分页加载失败时还会把 reach-bottom 的
+        //「数据加载中...」一直挂着，故这里一并复位 loading 状态并提示失败原因。
+        console.error('[订单列表] 请求失败', err);
+        _this2.loading = false;
+        uni.showToast({ title: (err && err.msg) || '订单列表加载失败', icon: 'none' });
       });
     },
     goAddress: function goAddress() {
@@ -399,7 +406,13 @@ var _index = __webpack_require__(/*! @/utils/index.js */ 29);function _interopRe
                 }).catch(function (err) {
                   console.error('[再来一单] 请求失败', err);
                   uni.showToast({ title: (err && err.msg) || '再来一单失败', icon: 'none' });
-                });case 5:case "end":return _context.stop();}}}, _callee);}))();
+                });case 5:case "end":return _context.stop();}}}, _callee);}))().catch(function (err) {
+      // 失败可见：「再来一单」第一步是 await 清空购物车，原实现这个 await 没有 try/catch，
+      // 失败时会产生未处理的 Promise rejection：既没有任何提示，用户还会以为按钮没反应。
+      // 这里在 async 包装函数返回的 Promise 上补捕获（不影响函数内部原有的成功路径）。
+      console.error('[再来一单] 清空购物车失败', err);
+      uni.showToast({ title: (err && err.msg) || '再来一单失败', icon: 'none' });
+    });
     },
     quitClick: function quitClick() {
 

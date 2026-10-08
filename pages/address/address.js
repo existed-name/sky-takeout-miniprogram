@@ -308,6 +308,12 @@ var _reachBottom = _interopRequireDefault(__webpack_require__(/*! @/components/r
         // 一旦请求失败（网络异常/后端报错）或 code!==1，遮罩永远不会收起，页面直接卡死。
         // 用 finally 保证成功、失败、code!==1 三种情况都会执行到收起遮罩。
         uni.hideLoading();
+      // 失败可见：原实现失败时只有 finally 收起遮罩，没有任何提示，
+      // 用户看到的是「地址列表空白」，会误以为一条地址都没有。这里补一条失败提示。
+      // 注意顺序：catch 必须排在 finally 之后，否则先弹出的 toast 会被随后的 hideLoading 顶掉。
+      }).catch(function (err) {
+        console.error('[地址列表] 请求失败', err);
+        uni.showToast({ title: (err && err.msg) || '地址列表加载失败', icon: 'none' });
       });
     },
 
@@ -337,7 +343,10 @@ var _reachBottom = _interopRequireDefault(__webpack_require__(/*! @/components/r
 
       this.setAddress(item);
     },
-    getRadio: function getRadio(index, item) {
+    getRadio: function getRadio(index, item) {var _this = this;
+      // 回滚准备：下面两行会在发请求前就先行改掉本地默认态，先记下操作前的值供失败时恢复
+      var prevIsDefault = item.isDefault;
+      var prevIsActive = _this.isActive;
       // this.current = e
       // // 提供默认接口
       item.isDefault = 1;
@@ -354,6 +363,14 @@ var _reachBottom = _interopRequireDefault(__webpack_require__(/*! @/components/r
           // this.getAddressList()
 
         }
+      }).catch(function (err) {
+        // 失败可见：原实现没有 catch，设置默认地址失败（后端返回 code:0 或网络异常）时
+        // 既没有任何提示，UI 又在请求前就已先本地选中，用户会误以为设置成功了。
+        // 回滚：先行的本地选中态必须恢复成操作前的值，否则 radio 会一直停在「已选中」的假成功状态。
+        console.error('[设置默认地址] 请求失败', err);
+        uni.showToast({ title: (err && err.msg) || '设置默认地址失败', icon: 'none' });
+        item.isDefault = prevIsDefault;
+        _this.isActive = prevIsActive;
       });
     } }) };exports.default = _default;
 /* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 1)["default"]))
