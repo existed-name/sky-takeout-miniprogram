@@ -19950,6 +19950,14 @@ Object.defineProperty(exports, "__esModule", { value: true });exports.default = 
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });exports.repetitionOrder = exports.paymentOrder = exports.reminderOrder = exports.cancelOrder = exports.getOrderDetail = exports.getOrderPage = exports.getShopPhone = exports.getShopStatus = exports.querySetmealDishById = exports.getAddressBookDefault = exports.oneOrderAgain = exports.queryAddressBookById = exports.delAddressBook = exports.editAddressBook = exports.addAddressBook = exports.putAddressBookDefault = exports.queryAddressBookList = exports.submitOrderSubmit = exports.queryOrderUserPage = exports.delShoppingCart = exports.newShoppingCartSub = exports.newAddShoppingCartAdd = exports.editHoppingCart = exports.getShoppingCartList = exports.querySetmeaList = exports.addShoppingCart = exports.commonDownload = exports.dishListByCategoryId = exports.getCategoryList = exports.userLogin = exports.payOrder = exports.clearOrder = exports.delDish = exports.addDish = exports.getDishList = exports.getDishDetail = exports.getList = exports.getMoreNorm = exports.getTableOrderDishList = exports.getTableState = exports.openTable = void 0;var _request = __webpack_require__(/*! ../../utils/request.js */ 25);
 
+/*
+ *
+ *
+ * 这里很多接口是后端没有的, 可能是培训班特有的、或者老项目的接口
+ *
+ *
+ *
+ */
 // 开桌
 var openTable = function openTable(params) {return (
     (0, _request.request)({
@@ -20037,7 +20045,21 @@ exports.clearOrder = clearOrder;var payOrder = function payOrder(params) {return
       params: params }));};
 
 
+/*
+ *
+ *
+ *
+ * 从这里开始才是后端接口
+ *
+ *
+ *
+ */
 
+/*
+用户端用户接口
+后端端点数: 1 个
+路径前缀: /user/user
+ */
 // 用户登录
 exports.payOrder = payOrder;var userLogin = function userLogin(params) {
   return (0, _request.request)({
@@ -20047,6 +20069,11 @@ exports.payOrder = payOrder;var userLogin = function userLogin(params) {
 
 };
 
+/*
+用户端分类接口
+后端端点数: 1 个
+路径前缀: /user/category
+ */
 // 菜品和套餐的分类
 exports.userLogin = userLogin;var getCategoryList = function getCategoryList(params) {
   return (0, _request.request)({
@@ -20056,6 +20083,11 @@ exports.userLogin = userLogin;var getCategoryList = function getCategoryList(par
 
 };
 
+/*
+用户端菜品接口
+后端端点数: 1 个
+路径前缀: /user/dish
+ */
 // 查询菜品管理列表
 exports.getCategoryList = getCategoryList;var dishListByCategoryId = function dishListByCategoryId(params) {
   return (0, _request.request)({
@@ -20065,33 +20097,12 @@ exports.getCategoryList = getCategoryList;var dishListByCategoryId = function di
 
 };
 
-// 文件下载---预览
-exports.dishListByCategoryId = dishListByCategoryId;var commonDownload = function commonDownload(params) {
-  return (0, _request.request)({
-    url: '/user/common/download',
-    method: 'GET',
-    params: params });
 
-};
-
-
-// 购物车----加菜功能实现
-exports.commonDownload = commonDownload;var addShoppingCart = function addShoppingCart(params) {
-  return (0, _request.request)({
-    url: '/user/shoppingCart',
-    method: 'POST',
-    params: params });
-
-};
-
-// 根据type类型查询是套餐的接口
-exports.addShoppingCart = addShoppingCart;var querySetmeaList = function querySetmeaList(params) {
-  return (0, _request.request)({
-    url: '/user/setmeal/list',
-    method: 'GET',
-    params: params });
-
-};
+/*
+用户端购物车接口
+后端端点数: 4 个
+路径前缀: /user/shoppingCart
+ */
 
 // 获取购物车集合
 exports.querySetmeaList = querySetmeaList;var getShoppingCartList = function getShoppingCartList(params) {
@@ -20101,17 +20112,6 @@ exports.querySetmeaList = querySetmeaList;var getShoppingCartList = function get
     params: params });
 
 };
-
-
-// 修改购物车数量功能
-exports.getShoppingCartList = getShoppingCartList;var editHoppingCart = function editHoppingCart(params) {
-  return (0, _request.request)({
-    url: '/user/shoppingCart',
-    method: 'PUT',
-    params: params });
-
-};
-
 
 // 购物车新增接口-new
 exports.editHoppingCart = editHoppingCart;var newAddShoppingCartAdd = function newAddShoppingCartAdd(params) {
@@ -20143,14 +20143,12 @@ exports.newShoppingCartSub = newShoppingCartSub;var delShoppingCart = function d
 };
 
 
-// 最近订单和历史订单
-exports.delShoppingCart = delShoppingCart;var queryOrderUserPage = function queryOrderUserPage(params) {
-  return (0, _request.request)({
-    url: '/user/order/userPage',
-    method: 'GET',
-    params: params });
-
-};
+/*
+用户端订单接口
+后端端点数: 8 个
+路径前缀: /user/order
+前端少了一个支付成功的回调通知, 支付( 其实就点一下确认支付就行 )后调后端支付成功接口, 然后显示支付成功
+ */
 
 
 // 用户下单
@@ -20162,6 +20160,51 @@ exports.queryOrderUserPage = queryOrderUserPage;var submitOrderSubmit = function
 
 };
 
+// 再来一单
+exports.paymentOrder = paymentOrder;var repetitionOrder = function repetitionOrder(params) {return (
+    (0, _request.request)({
+      url: "/user/order/repetition/".concat(params),
+      method: 'POST',
+      params: params }));};exports.repetitionOrder = repetitionOrder;
+
+// 历史订单
+exports.getShopPhone = getShopPhone;var getOrderPage = function getOrderPage(params) {
+  return (0, _request.request)({
+    url: '/user/order/historyOrders',
+    method: 'GET',
+    params: params });
+
+};
+// 订单详情
+exports.getOrderPage = getOrderPage;var getOrderDetail = function getOrderDetail(params) {return (
+    (0, _request.request)({
+      url: "/user/order/orderDetail/".concat(params),
+      method: 'GET' }));};
+
+// 取消订单
+exports.getOrderDetail = getOrderDetail;var cancelOrder = function cancelOrder(params) {return (
+    (0, _request.request)({
+      url: "/user/order/cancel/".concat(params),
+      method: 'PUT' }));};
+
+// 催单
+exports.cancelOrder = cancelOrder;var reminderOrder = function reminderOrder(params) {return (
+    (0, _request.request)({
+      url: "/user/order/reminder/".concat(params),
+      method: 'GET' }));};
+
+// 订单支付
+exports.reminderOrder = reminderOrder;var paymentOrder = function paymentOrder(params) {return (
+    (0, _request.request)({
+      url: "/user/order/payment",
+      method: 'PUT',
+      params: params }));};
+
+/*
+用户端地址簿接口
+后端端点数: 7 个
+路径前缀: /user/addressBook
+ */
 
 // 查询地址列表
 exports.submitOrderSubmit = submitOrderSubmit;var queryAddressBookList = function queryAddressBookList(params) {
@@ -20172,7 +20215,7 @@ exports.submitOrderSubmit = submitOrderSubmit;var queryAddressBookList = functio
 
 };
 
-// 新增默认接口
+// 设置默认地址
 exports.queryAddressBookList = queryAddressBookList;var putAddressBookDefault = function putAddressBookDefault(params) {
   return (0, _request.request)({
     url: '/user/addressBook/default',
@@ -20219,15 +20262,6 @@ exports.delAddressBook = delAddressBook;var queryAddressBookById = function quer
 };
 
 
-// 再来一单
-exports.queryAddressBookById = queryAddressBookById;var oneOrderAgain = function oneOrderAgain(params) {
-  return (0, _request.request)({
-    url: '/user/order/again',
-    method: 'POST',
-    params: params });
-
-};
-
 // 查询默认地址
 exports.oneOrderAgain = oneOrderAgain;var getAddressBookDefault = function getAddressBookDefault() {
   return (0, _request.request)({
@@ -20237,6 +20271,11 @@ exports.oneOrderAgain = oneOrderAgain;var getAddressBookDefault = function getAd
 };
 
 
+/*
+用户端套餐接口
+后端端点数: 2 个
+路径前缀: /user/setmeal
+ */
 // 此接口为首页查询套餐详情展示的接口
 exports.getAddressBookDefault = getAddressBookDefault;var querySetmealDishById = function querySetmealDishById(params) {
   return (0, _request.request)({
@@ -20244,6 +20283,21 @@ exports.getAddressBookDefault = getAddressBookDefault;var querySetmealDishById =
     method: 'GET' });
 
 };
+
+// 根据type类型查询是套餐的接口
+exports.addShoppingCart = addShoppingCart;var querySetmeaList = function querySetmeaList(params) {
+  return (0, _request.request)({
+    url: '/user/setmeal/list',
+    method: 'GET',
+    params: params });
+
+};
+
+/*
+用户端店铺接口
+后端端点数: 1 个
+路径前缀: /user/shop
+ */
 // v2.0添加接口
 // 获取首页店铺信息
 exports.querySetmealDishById = querySetmealDishById;var getShopStatus = function getShopStatus(params) {
@@ -20252,52 +20306,62 @@ exports.querySetmealDishById = querySetmealDishById;var getShopStatus = function
     method: 'GET' });
 
 };
-// 获取店铺电话
+
+
+
+/*
+ *
+ *
+ * 其他后端没有的接口
+ *
+ *
+ */
+
+// 文件下载---预览, 后端没有这个接口
+exports.dishListByCategoryId = dishListByCategoryId;var commonDownload = function commonDownload(params) {
+  return (0, _request.request)({
+    url: '/user/common/download',
+    method: 'GET',
+    params: params });
+
+};
+
+// 最近订单和历史订单, 后端没有这个接口
+exports.delShoppingCart = delShoppingCart;var queryOrderUserPage = function queryOrderUserPage(params) {
+  return (0, _request.request)({
+    url: '/user/order/userPage',
+    method: 'GET',
+    params: params });
+
+};
+
+// 购物车----加菜功能实现
+exports.commonDownload = commonDownload;var addShoppingCart = function addShoppingCart(params) {
+  return (0, _request.request)({
+    url: '/user/shoppingCart',
+    method: 'POST',
+    params: params });
+
+};
+
+
+// 修改购物车数量功能
+exports.getShoppingCartList = getShoppingCartList;var editHoppingCart = function editHoppingCart(params) {
+  return (0, _request.request)({
+    url: '/user/shoppingCart',
+    method: 'PUT',
+    params: params });
+
+};
+
+// 获取店铺电话, 后端没有这个接口
 exports.getShopStatus = getShopStatus;var getShopPhone = function getShopPhone(params) {
   return (0, _request.request)({
     url: "/user/shop/phone",
     method: 'GET' });
 
 };
-// 历史订单
-exports.getShopPhone = getShopPhone;var getOrderPage = function getOrderPage(params) {
-  return (0, _request.request)({
-    url: '/user/order/historyOrders',
-    method: 'GET',
-    params: params });
 
-};
-// 订单详情
-exports.getOrderPage = getOrderPage;var getOrderDetail = function getOrderDetail(params) {return (
-    (0, _request.request)({
-      url: "/user/order/orderDetail/".concat(params),
-      method: 'GET' }));};
-
-// 取消订单
-exports.getOrderDetail = getOrderDetail;var cancelOrder = function cancelOrder(params) {return (
-    (0, _request.request)({
-      url: "/user/order/cancel/".concat(params),
-      method: 'PUT' }));};
-
-// 催单
-exports.cancelOrder = cancelOrder;var reminderOrder = function reminderOrder(params) {return (
-    (0, _request.request)({
-      url: "/user/order/reminder/".concat(params),
-      method: 'GET' }));};
-
-// 订单支付
-exports.reminderOrder = reminderOrder;var paymentOrder = function paymentOrder(params) {return (
-    (0, _request.request)({
-      url: "/user/order/payment",
-      method: 'PUT',
-      params: params }));};
-
-// 再来一单
-exports.paymentOrder = paymentOrder;var repetitionOrder = function repetitionOrder(params) {return (
-    (0, _request.request)({
-      url: "/user/order/repetition/".concat(params),
-      method: 'POST',
-      params: params }));};exports.repetitionOrder = repetitionOrder;
 
 /***/ }),
 
