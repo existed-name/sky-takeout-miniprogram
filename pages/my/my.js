@@ -131,7 +131,7 @@ var render = function() {
     var $orig = _vm.__get_orig(item)
 
     var m0 = _vm.statusWord(item.status, _vm.getOvertime(item.orderTime))
-    var g0 = _vm.numes(item.orderDetailList).total.toFixed(2)
+    var g0 = _vm.formatOrderTotalAmount(item.amount, item.orderDetailList)
     var m1 = _vm.numes(item.orderDetailList)
     var m2 = item.status === 1 && _vm.getOvertime(item.orderTime) > 0
     return {
@@ -338,6 +338,8 @@ var _index = __webpack_require__(/*! @/utils/index.js */ 29);function _interopRe
   (0, _vuex.mapMutations)(['setAddressBackUrl'])), {}, {
     // <!-- 1待付款 2待接单 3 已接单 4 派送中 5 已完成 6 已取消 7 退款 -->
     numes: function numes(list) {
+      // 空值守卫：后端在整页订单都取不到明细时会返回 null，直接对 null 取 length 会抛错并打断整页渲染。
+      if (!Array.isArray(list)) { return { count: 0, total: 0 }; }
       var count = 0;
       var total = 0;
       list.length > 0 && list.forEach(function (obj) {
@@ -345,6 +347,19 @@ var _index = __webpack_require__(/*! @/utils/index.js */ 29);function _interopRe
         total += Number(obj.number) * Number(obj.amount);
       });
       return { count: count, total: total };
+    },
+    // 订单列表金额：优先用后端返回的实收金额（与订单详情页、支付页同口径），
+    // 后端没给（异常/历史数据）才退回按明细自算的商品小计，避免列表与详情出现两个金额。
+    // 注意：明细本身也可能是 null（后端在整页订单都取不到明细时会保持 null），
+    // 因此兜底必须做数组守卫，否则 numes(null) 会抛 TypeError 把整页渲染打断。
+    // 本页渲染只调用本方法，wxml 的 g0 槽位保持不变。
+    formatOrderTotalAmount: function formatOrderTotalAmount(amount, orderDetailList) {
+      var value = Number(amount);
+      if (amount === null || amount === undefined || amount === '' || isNaN(value) || !isFinite(value)) {
+        value = Array.isArray(orderDetailList) ? this.numes(orderDetailList).total : 0;
+      }
+      value = Number(value);
+      return (isFinite(value) ? value : 0).toFixed(2);
     },
     statusWord: function statusWord(status, time) {
       return (0, _index.statusWord)(status, time);
@@ -387,32 +402,26 @@ var _index = __webpack_require__(/*! @/utils/index.js */ 29);function _interopRe
         url: '/pages/historyOrder/historyOrder' });
 
     },
-    oneOrderFun: function oneOrderFun(id) {return _asyncToGenerator( /*#__PURE__*/_regenerator.default.mark(function _callee() {var pages, routeIndex;return _regenerator.default.wrap(function _callee$(_context) {while (1) {switch (_context.prev = _context.next) {case 0:
-                pages = getCurrentPages();
-                routeIndex = pages.findIndex(function (item) {return item.route === 'pages/index/index';});
-                // 先清空购物车
-                _context.next = 4;return (0, _api.delShoppingCart)();case 4:
-                (0, _api.repetitionOrder)(id).then(function (res) {
-                  if (res.code === 1) {
-                    uni.navigateBack({
-                      delta: routeIndex > -1 ? pages.length - routeIndex : 1 });
+    // 再来一单（含购物车保护：清空前先存快照，复制失败时按快照尽力恢复；
+    // 详见 reorderOrderWithCartProtection 的说明）
+    oneOrderFun: function oneOrderFun(id) {
+      var pages = getCurrentPages();
+      var routeIndex = pages.findIndex(function (item) {return item.route === 'pages/index/index';});
+      // 新编排函数永不 reject，成功与否都收敛在 result 上；清空购物车由它负责，页面不再自己清车。
+      (0, _api.reorderOrderWithCartProtection)(id).then(function (result) {
+        if (result && result.ok) {
+          // 成功：保持原有跳转方式（navigateBack，delta 按页面栈中首页的位置计算）
+          uni.navigateBack({
+            delta: routeIndex > -1 ? pages.length - routeIndex : 1 });
 
-                    // uni.redirectTo({
-                    // 	url: '/pages/index/index?formOrder=' + 'oneMoreOrder'
-                    // })
-                  }
-                // 失败可见：「再来一单」是先清空购物车再复制，复制失败（菜品/套餐停售等）时
-                // 原实现没有 catch，购物车已被清空却没有任何提示，用户会一头雾水。
-                }).catch(function (err) {
-                  // 失败原因由请求层统一提示，页面不再自行弹出提示。
-                  console.error('[再来一单] 请求失败', err);
-                });case 5:case "end":return _context.stop();}}}, _callee);}))().catch(function (err) {
-      // 失败可见：「再来一单」第一步是 await 清空购物车，原实现这个 await 没有 try/catch，
-      // 失败时会产生未处理的 Promise rejection，且用户还会以为按钮没反应。
-      // 这里在 async 包装函数返回的 Promise 上补捕获（不影响函数内部原有的成功路径）；
-      // 失败原因由请求层统一提示，页面不再自行弹出提示。
-      console.error('[再来一单] 清空购物车失败', err);
-    });
+          return;
+        }
+        // 失败可见：把未完成的阶段与原始错误打出来便于定位，提示文案统一由编排函数给出。
+        console.error('[再来一单] 未完成', result && result.stage, result && result.err);
+        if (result && result.userTip) {
+          uni.showModal({ title: '提示', content: result.userTip, showCancel: false });
+        }
+      });
     },
     quitClick: function quitClick() {
 

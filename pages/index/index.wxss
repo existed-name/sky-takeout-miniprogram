@@ -314,7 +314,7 @@
 }
 .home_content .restaurant_menu_list .vegetable_order_list .seize_seat.data-v-57280228 {
   width: 100%;
-  height: 136rpx;
+  height: 184rpx;
 }
 .home_content .restaurant_menu_list .no_dish.data-v-57280228 {
   flex: 1;
@@ -340,6 +340,20 @@
   z-index: 99;
   padding: 0rpx 10rpx;
   box-sizing: border-box;
+}
+/* 合计下方的费用说明：与结算页、详情页的费用文案必须同步修改；pointer-events 关闭以免拦截加减号点击 */
+.home_content .order_fee_tip.data-v-57280228 {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 148rpx;
+  padding-right: 60rpx;
+  text-align: right;
+  font-size: 20rpx;
+  line-height: 26rpx;
+  color: #999999;
+  z-index: 8;
+  pointer-events: none;
 }
 .home_content .footer_order_buttom .order_number.data-v-57280228 {
   position: relative;

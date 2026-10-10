@@ -4262,8 +4262,15 @@ var _index = __webpack_require__(/*! ../../utils/index.js */ 29);function _inter
 
   },
   onShow: function onShow() {
+    // 每次进入首页 / 从后台切回前台都刷新一次店铺营业状态。
+    // 该状态原来只在首次进入首页时取一次，导致：打烊后进入的用户被首页打烊遮罩挡住、
+    // 且（在改前的常规操作下）无法在小程序内把状态刷新回来；反过来，营业中启动、
+    // 之后店铺打烊也不会被感知。
+    // 注意 /user/shop/status 是全仓唯一免 token 的端点，因此这里刻意放在登录判断之外，
+    // 未登录用户同样能看到打烊遮罩；失败在请求层已静默（该端点在失败提示的静默清单里）。
+    this.getShopInfo();
     // 有sessionId免授权
-    // this.sessionId() && 
+    // this.sessionId() &&
     if (this.token()) {
       this.init();
     }
@@ -4289,8 +4296,6 @@ var _index = __webpack_require__(/*! ../../utils/index.js */ 29);function _inter
     getData: function getData() {
       var res = wx.getMenuButtonBoundingClientRect();
       var _this = this;
-      // 获取店铺状态
-      this.getShopInfo();
       this.selectHeight = res.height;
       if (this.token() === '') {
         uni.showModal({
@@ -4480,13 +4485,41 @@ var _index = __webpack_require__(/*! ../../utils/index.js */ 29);function _inter
                 _this7.typeIndex = index;
                 _this7.setOrderNum();case 12:case "end":return _context4.stop();}}}, _callee4);}))();
     },
-    // 获取首页店铺信息
-    getShopInfo: function getShopInfo() {var _this8 = this;return _asyncToGenerator( /*#__PURE__*/_regenerator.default.mark(function _callee5() {return _regenerator.default.wrap(function _callee5$(_context5) {while (1) {switch (_context5.prev = _context5.next) {case 0:_context5.next = 2;return (
-                  (0, _api.getShopStatus)().then(function (res) {
-                    _this8.shopStatus = res.data;
-                    // console.log(res.data)
-                    _this8.setShopStatus(res.data);
-                  }).catch(function (err) {}));case 2:case "end":return _context5.stop();}}}, _callee5);}))();
+    // 获取首页店铺信息：写入页面 data 与 Vuex，返回值表示本次查询是否成功。
+    // 失败不弹提示：该端点在请求层的失败提示静默清单里（属自动刷新的辅助信息）。
+    // 调用方可以忽略返回值（自动刷新场景），也可以按返回值决定是否提示（用户主动点「重新加载」的场景）。
+    getShopInfo: function getShopInfo() {
+      var _this8 = this;
+      return (0, _api.getShopStatus)().then(function (res) {
+        _this8.shopStatus = res.data;
+        _this8.setShopStatus(res.data);
+        return true;
+      }).catch(function (err) {
+        console.error('[首页] 获取店铺状态失败', err && err.msg);
+        return false;
+      });
+    },
+    // 打烊遮罩上的「重新加载」：仅重新查询店铺营业状态，不提供任何绕过遮罩的操作。
+    // 用户主动点击，所以失败与「仍然打烊」这些结果都要给出可见反馈。
+    reloadShopStatus: function reloadShopStatus() {
+      var _this = this;
+      this.getShopInfo().then(function (ok) {
+        if (!ok) {
+          // 请求层对该端点静默，这里必须由页面给出提示（modal 是独立弹层，不会被遮罩层级影响）
+          uni.showModal({
+            title: '提示',
+            content: '暂时无法获取店铺状态，请检查网络后重试',
+            showCancel: false });
+          return;
+        }
+        if (_this.shopStatus !== 1) {
+          // 查询成功但店铺仍在休息：遮罩不会消失，必须让用户知道「按钮生效了」
+          // 这里用 toast 是安全的：本流程没有任何 uni.showLoading/hideLoading，
+          // 首页的加载态是页面内的自定义遮罩（loddingSt），不是原生 loading。
+          uni.showToast({ title: '店铺仍在休息中', icon: 'none' });
+        }
+        // 店铺已营业：shopStatus 变为 1，遮罩自动消失，无需额外提示
+      });
     },
     // 获取店铺电话
     // 后端没有 /user/shop/phone 这个接口，原来那次请求必然失败；
@@ -19967,6 +20000,10 @@ Object.defineProperty(exports, "__esModule", { value: true });exports.repetition
 /*
  * 本模块只保留后端真实存在的用户端接口（共 25 个），并与后端的「路径 / 方法 / 入参」逐一对齐。
  *
+ * 另有一个「前端编排函数」（非后端端点，后端没有对应接口），
+ * 用于「再来一单」时的购物车保护：清空前先存快照、复制失败时按快照尽力恢复。
+ * 它同样遵守上面的「先集中定义、再集中导出」结构，定义与说明见本模块末尾。
+ *
  * 【历史事故说明，务必保留，避免后人再踩】
  * 本文件是 webpack 编译产物。早期版本把 `exports.xxx = xxx;` 夹杂着写在
  * `var xxx = function xxx(){}` 的前面；由于 `var` 声明会提升、但赋值不会提升，
@@ -20197,6 +20234,182 @@ var getShopStatus = function getShopStatus(params) {
     method: 'GET' });
 };
 
+/* ==================== 前端编排：再来一单（含购物车保护） ==================== */
+// 注意：下面这个「再来一单」编排函数是「前端编排逻辑」，不是后端端点，后端没有对应接口。
+//
+// 背景：后端「再来一单」只做「校验 + 插入」，它自己不清车、失败也不回滚；
+// 而三个入口（详情页/历史订单/我的）原来是「先清空购物车，再复制订单」。一旦复制失败
+// （老订单里的菜品/套餐已停售或已下架、订单明细缺失等），购物车已经被清空却没有恢复手段，
+// 用户直接丢车。保护策略：清空前先对购物车做一次只读快照，复制失败时按快照尽力恢复。
+//
+// 冻结契约（页面调用点依赖，不要改名、不要改形）：
+//   1) 永不 reject，成功与否都收敛在返回对象上（提示文案放在 userTip）；
+//   2) err 必须原样带回 result，不得吞掉；
+//   3) 快照失败即 fail-closed：完全不碰购物车，且文案必须写明「购物车未改动」；
+//   4) 恢复阶段跳过失败项、连续 2 次失败才中止，最后只汇总一次 userTip；
+//   5) restored 为 true（含「购物车本来就是空的」）时也要给一句「原购物车已保留」。
+//
+// 重入锁：三个入口按钮都没有 disabled/loading，恢复阶段可能连发多次串行请求，
+// 用模块级标志位挡住，避免并发清车/重建购物车。
+var reorderInFlight = false;
+
+// 内部实现：不加锁，只负责「快照 → 清空 → 复制 → 失败恢复」主流程；自身永不 reject。
+function doReorder(orderId) {
+  return getShoppingCartList({}).then(function (snapshotRes) {
+    // 后端购物车列表返回 { items, totalAmount }，items 才是购物车行数组
+    var items = snapshotRes && snapshotRes.data && snapshotRes.data.items || [];
+    if (!items.length) {
+      // 购物车本来就是空的：没有可丢的东西，跳过清空，直接复制
+      return repetitionOrder(orderId).then(function () {
+        return { ok: true, stage: '', err: null, skippedClear: true, restored: false,
+          restoredCount: 0, failedCount: 0, userTip: '' };
+      }, function (err) {
+        // 空车时复制失败：购物车一直是空的，没有任何东西会丢，无需恢复（原购物车确实没被动过）
+        return { ok: false, stage: 'repetition', err: err, skippedClear: true, restored: true,
+          restoredCount: 0, failedCount: 0,
+          userTip: '「再来一单」未成功，原购物车已保留' };
+      });
+    }
+    // 非空购物车：先清空，再复制
+    return delShoppingCart().then(function () {
+      return repetitionOrder(orderId).then(function () {
+        return { ok: true, stage: '', err: null, skippedClear: false, restored: false,
+          restoredCount: 0, failedCount: 0, userTip: '' };
+      }, function (err) {
+        // 复制失败 → 按快照尽力恢复，错误对象原样带回
+        return restoreCartFromSnapshot(items).then(function (recovery) {
+          return { ok: false, stage: 'repetition', err: err, skippedClear: false,
+            restored: recovery.restored, restoredCount: recovery.restoredCount,
+            failedCount: recovery.failedCount, userTip: recovery.userTip };
+        });
+      });
+    }, function (err) {
+      // 清空失败：购物车没被改动，请求层已为 DELETE 弹过提示，这里不重复打扰
+      return { ok: false, stage: 'clear', err: err, skippedClear: false, restored: false,
+        restoredCount: 0, failedCount: 0, userTip: '' };
+    });
+  }, function (err) {
+    // 快照失败 → fail-closed：绝不碰购物车。
+    // GET /user/shopping-carts 在静默清单里，请求层不会弹，所以这条提示必须由调用方展示。
+    return { ok: false, stage: 'snapshot', err: err, skippedClear: false, restored: false,
+      restoredCount: 0, failedCount: 0,
+      userTip: '暂时无法读取购物车内容，已取消「再来一单」，购物车未改动，请稍后重试' };
+  });
+}
+
+// 内部实现：按快照把「被清空的购物车」逐项加回去，返回恢复统计与汇总文案。
+// 加购接口一次只加 1 份（请求体没有 number 字段），所以一条份数为 n 的行要连发 n 次；
+// 全程串行，避免并发写同一行造成数量竞态。
+function restoreCartFromSnapshot(items) {
+  var restoredCount = 0;       // 完整恢复的购物车行数（按行统计，不按份数）
+  var failedCount = 0;         // 未能完整恢复的购物车行数
+  var consecutiveFailures = 0; // 连续失败计数
+  var aborted = false;         // 是否因连续失败而中止
+  var index = 0;               // 当前处理到第几行
+
+  return new Promise(function (resolve) {
+    function finish() {
+      var restored = failedCount === 0;
+      var userTip;
+      if (restored) {
+        userTip = '「再来一单」未成功，原购物车已保留';
+      } else {
+        userTip = '「再来一单」未成功；原购物车已恢复 ' + restoredCount + ' 项，' +
+          failedCount + ' 项未能恢复（相关商品可能已下架），请到购物车核对';
+      }
+      if (aborted) {
+        userTip += '（恢复已中断）';
+      }
+      resolve({ restored: restored, restoredCount: restoredCount, failedCount: failedCount,
+        userTip: userTip });
+    }
+
+    function nextRow() {
+      if (index >= items.length) {
+        finish();
+        return;
+      }
+      var row = items[index] || {};
+      // 一条行的加购次数 = 该行份数；份数异常时按 1 次兜底，避免死循环
+      var rowNumber = Number(row.number);
+      var times = rowNumber > 0 ? Math.floor(rowNumber) : 1;
+      var done = 0;
+      var rowFailed = false;
+
+      function nextCopy() {
+        if (done >= times) {
+          // 该行是否完整恢复：份数次调用全部成功才算恢复；部分成功也算未完整恢复（口径保守）
+          if (rowFailed) {
+            failedCount++;
+          } else {
+            restoredCount++;
+          }
+          index++;
+          nextRow();
+          return;
+        }
+        newAddShoppingCartAdd({
+          dishId: row.dishId,
+          setmealId: row.setmealId,
+          dishFlavor: row.dishFlavor
+        }).then(function () {
+          done++;
+          consecutiveFailures = 0;
+          nextCopy();
+        }, function () {
+          // 跳过失败项、继续后续；连续失败达到 2 次即中止，
+          // 避免整网不可用时反复请求与反复弹窗。
+          rowFailed = true;
+          done++;
+          consecutiveFailures++;
+          if (consecutiveFailures >= 2) {
+            aborted = true;
+            // 当前行未完整恢复；后面尚未尝试的行同样算未恢复（它们不会再有恢复请求）
+            failedCount++;
+            failedCount += items.length - index - 1;
+            finish();
+            return;
+          }
+          nextCopy();
+        });
+      }
+
+      nextCopy();
+    }
+
+    nextRow();
+  });
+}
+
+// 对外编排函数（冻结契约名，页面调用点依赖，不要改名）。
+// 参数 orderId 为订单 id 裸值；返回 Promise<结果对象>，永不 reject。
+function reorderOrderWithCartProtection(orderId) {
+  if (reorderInFlight) {
+    return Promise.resolve({ ok: false, stage: 'busy', err: null, skippedClear: false,
+      restored: false, restoredCount: 0, failedCount: 0,
+      userTip: '正在处理上一次「再来一单」，请稍候' });
+  }
+  reorderInFlight = true;
+  // 意外异常的收口：先复位锁、再把 err 原样带回，保证任何返回路径都不会漏放锁。
+  // doReorder 理论上不 reject，调用方也无需写 catch。
+  function handleReorderFailure(err) {
+    reorderInFlight = false;
+    return { ok: false, stage: 'unexpected', err: err, skippedClear: false, restored: false,
+      restoredCount: 0, failedCount: 0, userTip: '「再来一单」处理异常，请稍后重试' };
+  }
+  // 用 try/catch 包住编排调用：若 doReorder 在返回 Promise 之前就同步抛错，
+  // 也必须复位锁并收敛成普通结果返回，否则异常会同步冒泡、且锁永久停留为 true，
+  // 导致整个会话内「再来一单」都被 busy 分支挡掉。
+  try {
+    return doReorder(orderId).then(function (result) {
+      reorderInFlight = false;
+      return result;
+    }, handleReorderFailure);
+  } catch (err) {
+    return Promise.resolve(handleReorderFailure(err));
+  }
+}
+
 /* ==================== 集中导出 ==================== */
 /* 全部导出统一放在所有函数定义之后，确保导出时拿到的都是函数本体（原因见本模块顶部注释） */
 exports.userLogin = userLogin;
@@ -20224,6 +20437,7 @@ exports.getAddressBookDefault = getAddressBookDefault;
 exports.querySetmealDishById = querySetmealDishById;
 exports.querySetmeaList = querySetmeaList;
 exports.getShopStatus = getShopStatus;
+exports.reorderOrderWithCartProtection = reorderOrderWithCartProtection;
 
 
 /***/ }),
@@ -20250,11 +20464,15 @@ var FAIL_TOAST_WINDOW = 2000;
 // 用前缀匹配会让「加菜失败」被误判成静默（反之亦然）。
 var FAIL_TOAST_SILENT_REQUESTS = [
   'GET /user/shopping-carts',   // 首页购物车回灌刷新：加/减/清空成功后自动触发，弹出会与「操作已成功」的观感冲突
-  'GET /user/shop/status'       // 首页 onShow 自动触发的辅助信息（店铺营业状态）
+  'GET /user/shop/status'       // 首页每次进入/回到前台自动刷新的店铺营业状态（由首页 onShow 触发，与登录态无关），属辅助信息，失败只影响打烊遮罩是否显示
 ];
 // 展示层限制：后端 BusinessException 走的是 ex.getMessage()，不是受控常量，长度不可控；
 // 超过该长度就截断展示，避免 toast 只显示半句话反而更困惑
 var FAIL_TOAST_MAX_LEN = 40;
+// 请求超时（毫秒）：不设置时走微信默认 60 秒，期间页面无任何反馈，用户会认为「点了没反应」。
+// 取 10 秒：既能把「卡死」压缩到可感知的时间量级，又给后端的慢路径（下单会调外部地图接口做派送距离校验、
+// 首次请求可能遇到后端冷启动）留足余量，避免误杀本来能成功的请求。
+var REQUEST_TIMEOUT_MS = 10000;
 // 去重状态（模块级，跨所有请求共享）
 var lastFailToastKey = '';
 var lastFailToastAt = 0;
@@ -20321,9 +20539,6 @@ function notifyRequestFail(url, method, err, fallback) {
 
 // 参数： url:请求地址  param：请求参数  method：请求方式 callBack：回调函数
 function request(_ref) {var _ref$url = _ref.url,url = _ref$url === void 0 ? '' : _ref$url,_ref$params = _ref.params,params = _ref$params === void 0 ? {} : _ref$params,_ref$method = _ref.method,method = _ref$method === void 0 ? 'GET' : _ref$method;
-  uni.getStorage({
-    key: '' });
-
   var storeInfo = _store.default.state;
   var header = {
     'Accept': 'application/json',
@@ -20341,6 +20556,8 @@ function request(_ref) {var _ref$url = _ref.url,url = _ref$url === void 0 ? '' :
       data: params,
       header: header,
       method: method,
+      // 超时：不设置时走微信默认 60 秒，超时会走 fail 分支（由请求层统一提示，静默端点除外）
+      timeout: REQUEST_TIMEOUT_MS,
       success: function success(res) {
         // 【401 复位闭环】后端登录态失效时返回 HTTP 401（响应体是 {code:0,msg:'您还没有登录哦~'}）。
         // 这里必须做「清 storage → 清 Vuex → 只弹一次提示 → 回首页重新登录」的闭环：
@@ -21895,6 +22112,8 @@ var _default = {
       gender: '0',
       phoneNumber: '',
       address: '',
+      // 默认地址请求进行中：仅用于地址块的加载占位，避免「空着 → 突变」
+      addressLoading: false,
       remark: '',
       arrivalTime: '',
       orderTime: '',
@@ -22092,9 +22311,12 @@ var _default = {
         console.error('[订单页] 获取地址列表失败', err && err.msg);
       });
     },
-    // 默认地址查询
+    // 默认地址查询（带加载态：先置 true 让地址块显示占位，无论成功失败都要收尾）
     getAddressBookDefault: function getAddressBookDefault() {var _this5 = this;
+      _this5.addressLoading = true;
       (0, _api.getAddressBookDefault)().then(function (res) {
+        // 先收尾加载态，再做字段赋值：即使后端结构异常也不会让占位永久留在页面上
+        _this5.addressLoading = false;
         if (res.code === 1) {
           _this5.addressBookId = '';
           _this5.address = res.data.provinceName + res.data.cityName + res.data.districtName + res.data.
@@ -22107,6 +22329,7 @@ var _default = {
           _this5.tagLabel = res.data.label;
         }
       }).catch(function (err) {
+        _this5.addressLoading = false;
         // 失败提示由请求层统一弹出，这里只记录日志（只打窄字段，避免响应体里的收货信息外泄）
         console.error('[订单页] 获取默认地址失败', err && err.msg);
       });
@@ -28642,26 +28865,23 @@ var _default = {
         this.textTip = '请联系商家进行取消！';
       }
     },
-    // 再来一单
-    oneMoreOrder: function oneMoreOrder(id) {return _asyncToGenerator( /*#__PURE__*/_regenerator.default.mark(function _callee() {return _regenerator.default.wrap(function _callee$(_context) {while (1) {switch (_context.prev = _context.next) {case 0:_context.next = 2;return (
+    // 再来一单（含购物车保护：清空前先存快照，复制失败时按快照尽力恢复；
+    // 详见 reorderOrderWithCartProtection 的说明）
+    oneMoreOrder: function oneMoreOrder(id) {
+      // 新编排函数永不 reject，成功与否都收敛在 result 上；清空购物车由它负责，页面不再自己清车。
+      (0, _api.reorderOrderWithCartProtection)(id).then(function (result) {
+        if (result && result.ok) {
+          // 成功：保持原有跳转方式（详情页用 redirectTo，不要顺手改）
+          uni.redirectTo({
+            url: '/pages/index/index' });
 
-                  (0, _api.delShoppingCart)());case 2:
-                (0, _api.repetitionOrder)(id).then(function (res) {
-                  if (res.code === 1) {
-                    uni.redirectTo({
-                      url: '/pages/index/index' });
-
-                  } else {
-                    // 失败可见：「再来一单」是先清空购物车再复制，若复制失败（菜品/套餐停售等），
-                    // 购物车已被清空却没有提示，用户会一头雾水。这里把后端返回的原因显示出来。
-                    console.error('[再来一单] 失败', res);
-                    uni.showToast({ title: (res && res.msg) || '再来一单失败', icon: 'none' });
-                  }
-                }).catch(function (err) {
-                  // 失败提示由请求层统一弹出，这里只记录日志
-                  console.error('[再来一单] 请求失败', err);
-                });case 3:case "end":return _context.stop();}}}, _callee);}))().catch(function (err) {
-        console.error('[再来一单] 清空购物车失败', err && err.msg);
+          return;
+        }
+        // 失败可见：把未完成的阶段与原始错误打出来便于定位，提示文案统一由编排函数给出。
+        console.error('[再来一单] 未完成', result && result.stage, result && result.err);
+        if (result && result.userTip) {
+          uni.showModal({ title: '提示', content: result.userTip, showCancel: false });
+        }
       });
     },
     // 处理状态

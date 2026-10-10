@@ -254,6 +254,16 @@
   color: #f58c21;
   align-self: center;
 }
+/* 默认地址请求进行中的占位：沿用「请选择收货地址」的排版，改中性灰，与橙色警示区分 */
+.order_content .new_address .address_name_loading.data-v-0ca91b30 {
+  flex: 1;
+  font-size: 36rpx;
+  line-height: 50rpx;
+  font-family: PingFangSC, PingFangSC-Regular;
+  font-weight: 400;
+  color: #999999;
+  align-self: center;
+}
 .order_content .new_address .infoTip.data-v-0ca91b30 {
   padding-right: 30rpx;
 }
