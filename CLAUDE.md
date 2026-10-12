@@ -10,8 +10,8 @@
 - 仓库内**没有** `package.json`、`src/`、`manifest.json`、`pages.json`、`App.vue`，也**没有** `node_modules/`（只有一个连字符命名的 `node-modules/`，是组件库副本，不是依赖目录）。因此这里**没有 `npm install` / `npm run build` 之类的构建步骤**，也没有原始工程可供二次编译。
 - **本仓库只负责小程序前端**：不改后端，也不改管理端前端 / Web 用户端。
 - 兄弟仓库（各自独立仓库、独立构建、独立部署，**不共享任何代码**）：
-  - 后端：`sky-takeout`
-  - 管理端前端：`sky-takeout-frontend`
+  - 后端：`sky-takeout-backend`
+  - 管理端前端：`sky-takeout-frontend-admin`
   - Web 用户端前端：`sky-takeout-frontend-user`
 
 ---

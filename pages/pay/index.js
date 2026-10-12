@@ -236,7 +236,7 @@ var ENABLE_REAL_WX_PAY = false;function ownKeys(object, enumerableOnly) {var key
       } else {
         // 如果支付成功进入成功页
         clearTimeout(this.times);
-        // paymentOrder 的签名已统一为「订单 id 裸值」（契约 §1.4 #16），
+        // paymentOrder 的签名已统一为「订单 id 裸值」，
         // 原先传 {orderNumber, payMethod} 对象会把 URL 拼成 /user/orders/undefined/payment。
         (0, _api.paymentOrder)(this.orderId).then(function (res) {
           if (res.code === 1) {

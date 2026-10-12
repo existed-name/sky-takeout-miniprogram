@@ -174,7 +174,7 @@ var _default = { data: function data() {return {};}, props: { phoneData: { type:
       this.$emit('closePopup');
     },
     // uni-popup 打开/关闭时会 $emit('change')，本组件模板绑定了本方法，此处仅作占位；
-    // 真正的清理留到转原生轮次，写法与首页(vendor.js:4815)、提交订单页(vendor.js:22136)保持一致
+    // 真正的清理留作后续优化，写法与该组件在首页、提交订单页的用法保持一致
     change: function change(e) {
       console.log('当前模式：' + e.type + ',状态：' + e.show);
     } } };exports.default = _default;

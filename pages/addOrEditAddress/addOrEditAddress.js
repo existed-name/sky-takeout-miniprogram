@@ -426,7 +426,7 @@ var _api = __webpack_require__(/*! ../api/api.js */ 24);function ownKeys(object,
     },
     // 查询地址详情接口
     queryAddressBookById: function queryAddressBookById(id) {var _this = this;
-      // queryAddressBookById 的签名已统一为「地址 id 裸值」（契约 §1.4 #24），
+      // queryAddressBookById 的签名已统一为「地址 id 裸值」，
       // 传对象会读不到 id 并把 URL 拼成 /user/address-books/undefined，故这里必须传裸值。
       (0, _api.queryAddressBookById)(id).then(function (res) {
         if (res.code === 1) {

@@ -349,7 +349,7 @@ var _reachBottom = _interopRequireDefault(__webpack_require__(/*! @/components/r
       // // 提供默认接口
       item.isDefault = 1;
       this.isActive = index;
-      // putAddressBookDefault 的签名已统一为「地址 id 裸值」（契约 §1.4 #20），
+      // putAddressBookDefault 的签名已统一为「地址 id 裸值」，
       // 传对象会读不到 id 并把 URL 拼成 /user/address-books/undefined/default，故这里必须传裸值。
       (0, _api.putAddressBookDefault)(item.id).then(function (res) {
         if (res.code === 1) {
